@@ -1,0 +1,134 @@
+/* Hotel Management System - Dark Theme */
+
+QWidget#LoginWindow {
+    background: qlineargradient(x1:0, y1:0, x2:1, y2:1, stop:0 #0F172A, stop:1 #1E293B);
+}
+QFrame#LoginCard {
+    background: #1E293B;
+    border: 1px solid #334155;
+    border-radius: 16px;
+}
+QLabel#LoginTitle { color: #F8FAFC; }
+QLabel#LoginSubtitle { color: #94A3B8; }
+QLabel#LoginMessage { color: #F87171; }
+
+QMainWindow { background-color: #0F172A; }
+QWidget { color: #E2E8F0; }
+
+QWidget#Sidebar {
+    background: qlineargradient(x1:0, y1:0, x2:1, y2:0, stop:0 #1E293B, stop:1 #0F172A);
+}
+QLabel#SidebarTitle { color: #F8FAFC; }
+QLabel#SidebarSubtitle { color: #94A3B8; }
+
+QPushButton#NavButton {
+    background: transparent;
+    border: none;
+    color: #94A3B8;
+}
+QPushButton#NavButton:hover {
+    background: rgba(255, 255, 255, 0.08);
+    color: #E2E8F0;
+}
+QPushButton#NavButton:checked {
+    background: #3B82F6;
+    color: #FFFFFF;
+}
+QPushButton#ThemeButton {
+    background: rgba(255, 255, 255, 0.06);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    color: #94A3B8;
+}
+QPushButton#ThemeButton:hover { color: #E2E8F0; }
+
+QWidget#ContentArea { background-color: #0F172A; }
+QLabel#PageTitle { color: #F8FAFC; }
+QLabel#PageSubtitle { color: #94A3B8; }
+QLabel#SectionHeader { color: #E2E8F0; }
+
+QWidget#StatCard {
+    background: #1E293B;
+    border: 1px solid #334155;
+}
+QWidget#StatCard QLabel { color: #94A3B8; }
+QLabel#StatValue { color: #F8FAFC; font-size: 22px; font-weight: 700; }
+
+QPushButton#TileButton {
+    background: #1E293B;
+    border: 1px solid #334155;
+    color: #E2E8F0;
+}
+QPushButton#TileButton:hover {
+    background: #334155;
+    border-color: #3B82F6;
+    color: #60A5FA;
+}
+
+QPushButton {
+    background: #1E293B;
+    border: 1px solid #334155;
+    color: #E2E8F0;
+}
+QPushButton:hover {
+    background: #334155;
+    border-color: #475569;
+}
+QPushButton#PrimaryButton {
+    background: #3B82F6;
+    border: none;
+    color: #FFFFFF;
+}
+QPushButton#PrimaryButton:hover { background: #2563EB; }
+
+QLineEdit, QComboBox, QSpinBox, QDoubleSpinBox, QDateEdit {
+    background: #1E293B;
+    border: 1px solid #334155;
+    color: #F8FAFC;
+}
+QLineEdit:focus, QComboBox:focus { border-color: #3B82F6; }
+
+QTableView {
+    background: #1E293B;
+    alternate-background-color: #0F172A;
+    gridline-color: #334155;
+    border: 1px solid #334155;
+}
+QTableView::item:selected {
+    background: #1E3A5F;
+    color: #93C5FD;
+}
+QHeaderView::section {
+    background: #0F172A;
+    color: #94A3B8;
+    border-bottom: 2px solid #334155;
+}
+
+QTabWidget::pane {
+    border: 1px solid #334155;
+    background: #1E293B;
+}
+QTabBar::tab {
+    background: #0F172A;
+    border: 1px solid #334155;
+    color: #94A3B8;
+}
+QTabBar::tab:selected {
+    background: #1E293B;
+    border-bottom-color: #1E293B;
+    color: #60A5FA;
+}
+
+QListWidget {
+    background: #1E293B;
+    border: 1px solid #334155;
+}
+QListWidget::item:selected { background: #1E3A5F; }
+
+QChartView {
+    background: #1E293B;
+    border: 1px solid #334155;
+}
+
+QScrollBar:vertical { background: #0F172A; }
+QScrollBar::handle:vertical { background: #475569; }
+QScrollBar::handle:vertical:hover { background: #64748B; }
