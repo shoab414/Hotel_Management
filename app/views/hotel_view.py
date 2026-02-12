@@ -370,7 +370,7 @@ class HotelView(QWidget):
     def edit_customer(self):
         row = self.customers.currentRow()
         if row < 0:
-            QMessageBox.warning(self, "Selection", "Please select a customer to edit.")
+            MessageBox.warning(self, "Selection Required", "Please select a customer to edit.")
             return
         cust_id = int(self.customers.item(row,0).text())
         dlg = CustomerDialog(self)
@@ -383,8 +383,8 @@ class HotelView(QWidget):
             cur.execute("UPDATE Customers SET name=?, phone=?, email=? WHERE id=?",
                         (dlg.name.text().strip(), dlg.phone.text().strip(), dlg.email.text().strip(), cust_id))
             conn.commit()
-            self.refresh()
-            QMessageBox.information(self, "Success", "Customer updated successfully.")
+            self.refresh_customers()
+            MessageBox.success(self, "Customer Updated", "Customer information has been updated successfully!")
 
     def delete_customer(self):
         row = self.customers.currentRow()
