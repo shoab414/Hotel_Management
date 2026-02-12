@@ -363,9 +363,9 @@ class HotelView(QWidget):
             cur = conn.cursor()
             cur.execute("INSERT INTO Customers(name,phone,email) VALUES(?,?,?)",
                         (dlg.name.text().strip(), dlg.phone.text().strip(), dlg.email.text().strip()))
-         conn.commit()
-                self.refresh_customers()
-                MessageBox.success(self, "Customer Added", "Customer has been added successfully!")
+            conn.commit()
+            self.refresh_customers()
+            MessageBox.success(self, "Customer Added", "Customer has been added successfully!")
 
     def edit_customer(self):
         row = self.customers.currentRow()
