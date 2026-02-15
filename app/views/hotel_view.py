@@ -1,6 +1,8 @@
-from PySide6.QtWidgets import QWidget, QVBoxLayout, QHBoxLayout, QPushButton, QTableWidget, QTableWidgetItem, QComboBox, QLineEdit, QSpinBox, QDialog, QFormLayout, QLabel, QTabWidget, QMessageBox
+from PySide6.QtWidgets import QWidget, QVBoxLayout, QHBoxLayout, QPushButton, QTableWidget, QTableWidgetItem, QComboBox, QLineEdit, QSpinBox, QDialog, QFormLayout, QLabel, QTabWidget, QGridLayout, QMessageBox
 from PySide6.QtCore import Qt
 import datetime
+from app.views.table_management_dialog import TableManagementDialog
+import logging
 
 class RoomDialog(QDialog):
     def __init__(self, parent=None):
@@ -132,6 +134,16 @@ class HotelView(QWidget):
         rooms_layout.addWidget(self.rooms)
         self.tabs.addTab(rooms_tab, "Rooms")
 
+        # ---- Tables tab ----
+        tables_tab = QWidget()
+        tables_layout = QVBoxLayout(tables_tab)
+        tables_layout.setSpacing(16)
+        self.tables_grid = QGridLayout()
+        self.tables_grid.setSpacing(10)
+        tables_layout.addLayout(self.tables_grid)
+        tables_layout.addStretch()
+        self.tabs.addTab(tables_tab, "Tables")
+
         # ---- Reservations tab ----
         res_tab = QWidget()
         res_layout = QVBoxLayout(res_tab)
@@ -231,6 +243,51 @@ class HotelView(QWidget):
             self.reservations.setItem(i,3,QTableWidgetItem(r["ci"]))
             self.reservations.setItem(i,4,QTableWidgetItem(r["co"] or ""))
         self.refresh_customers()
+        self.refresh_tables()
+
+    def refresh_tables(self):
+        # Clear existing buttons
+        while self.tables_grid.count():
+            item = self.tables_grid.takeAt(0)
+            widget = item.widget()
+            if widget:
+                widget.deleteLater() # Schedule for deletion
+            del item # Delete the layout item
+
+        conn = self.controller.db.connect()
+        cur = conn.cursor()
+        cur.execute("SELECT id, number, status FROM Tables ORDER BY number")
+        tables = cur.fetchall()
+
+        row = 0
+        col = 0
+        for table in tables:
+            btn = QPushButton(f"Table {table['number']}\n({table['status']})")
+            btn.setFixedSize(100, 80)
+            btn.setProperty("class", "table-button")
+            if table['status'] == 'Available':
+                btn.setStyleSheet("background-color: #4CAF50; color: white;") # Green
+            elif table['status'] == 'Occupied':
+                btn.setStyleSheet("background-color: #FFC107; color: black;") # Amber
+            elif table['status'] == 'Cleaning':
+                btn.setStyleSheet("background-color: #9E9E9E; color: white;") # Grey
+            else:
+                btn.setStyleSheet("background-color: #2196F3; color: white;") # Blue (default)
+            btn.clicked.connect(lambda checked, t=table: self.open_table_management(t['id']))
+            logging.info(f"Connected click signal for Table {table['number']} (ID: {table['id']}, Status: {table['status']})")
+            self.tables_grid.addWidget(btn, row, col)
+            col += 1
+            if col > 4: # Max 5 tables per row
+                col = 0
+                row += 1
+
+    def open_table_management(self, table_id):
+        logging.info(f"Attempting to open TableManagementDialog for table_id: {table_id}")
+        dlg = TableManagementDialog(table_id, self.controller, self)
+        logging.info(f"TableManagementDialog instance created for table_id: {table_id}")
+        dlg.exec()
+        logging.info(f"TableManagementDialog for table_id: {table_id} closed.")
+        self.refresh_tables() # Refresh tables display after dialog closes
 
     def add_room(self):
         dlg = RoomDialog(self)
@@ -291,7 +348,7 @@ class HotelView(QWidget):
             if not room_number and dlg.room.count() > 0:
                 room_number = dlg.room.currentText().split()[0] if dlg.room.currentText() else None
             if not room_number:
-                QMessageBox.warning(self, "Validation", "Please select a room.")
+                MessageBox.warning(self, "Validation Required", "Please select a room for check-in.")
                 return
             if not dlg.check_in.text().strip() or not dlg.check_out.text().strip():
                 QMessageBox.warning(self, "Validation", "Check-in and check-out dates are required.")
@@ -301,7 +358,7 @@ class HotelView(QWidget):
             cur.execute("SELECT id FROM Rooms WHERE number=?", (str(room_number),))
             room_row = cur.fetchone()
             if not room_row:
-                QMessageBox.warning(self, "Error", "Selected room not found.")
+                MessageBox.error(self, "Room Error", "Selected room not found.")
                 return
             room_id = room_row["id"]
             cur.execute("INSERT INTO Customers(name) VALUES(?)", (dlg.customer.text().strip(),))
@@ -389,14 +446,16 @@ class HotelView(QWidget):
     def delete_customer(self):
         row = self.customers.currentRow()
         if row < 0:
-            QMessageBox.warning(self, "Selection", "Please select a customer to delete.")
+            MessageBox.warning(self, "Selection Required", "Please select a customer to delete.")
             return
         cust_id = int(self.customers.item(row,0).text())
-        conn = self.controller.db.connect()
-        cur = conn.cursor()
-        cur.execute("DELETE FROM Customers WHERE id=?", (cust_id,))
-        conn.commit()
-        self.refresh()
+        if MessageBox.confirm(self, "Confirm Deletion", "Are you sure you want to delete this customer? This action cannot be undone."):
+            conn = self.controller.db.connect()
+            cur = conn.cursor()
+            cur.execute("DELETE FROM Customers WHERE id=?", (cust_id,))
+            conn.commit()
+            self.refresh_customers()
+            MessageBox.success(self, "Customer Deleted", "Customer has been deleted successfully.")
 
     def export_customers_csv(self):
         import csv, os
@@ -411,12 +470,12 @@ class HotelView(QWidget):
             w.writerow(["ID","Name","Phone","Email"])
             for r in rows:
                 w.writerow([r["id"], r["name"], r["phone"] or "", r["email"] or ""])
-        QMessageBox.information(self, "Export", f"Exported {len(rows)} customers to customers_export.csv")
+        MessageBox.info(self, "Export Complete", f"Exported {len(rows)} customers to customers_export.csv")
 
     def customer_check_in(self):
         row = self.customers.currentRow()
         if row < 0:
-            QMessageBox.warning(self, "Selection", "Please select a customer.")
+            MessageBox.warning(self, "Selection Required", "Please select a customer to check in.")
             return
         cust_id = int(self.customers.item(row,0).text())
         dlg = CustomerCheckinDialog(self, self.controller.db)
@@ -435,7 +494,7 @@ class HotelView(QWidget):
                 QMessageBox.warning(self, "Error", "Room not found.")
                 return
             if room_row["status"] != "Available":
-                QMessageBox.warning(self, "Error", "Selected room is not available.")
+                MessageBox.warning(self, "Room Unavailable", "Selected room is not available.")
                 return
             room_id = room_row["id"]
             cur.execute("INSERT INTO Reservations(customer_id,room_id,check_in,check_out,status) VALUES(?,?,?,?,?)",
@@ -443,12 +502,12 @@ class HotelView(QWidget):
             cur.execute("UPDATE Rooms SET status='Occupied' WHERE id=?", (room_id,))
             conn.commit()
             self.refresh()
-            QMessageBox.information(self, "Success", "Customer checked in successfully.")
+            MessageBox.success(self, "Check-in Successful", "Customer checked in successfully!")
 
     def customer_check_out(self):
         row = self.customers.currentRow()
         if row < 0:
-            QMessageBox.warning(self, "Selection", "Please select a customer.")
+            MessageBox.warning(self, "Selection Required", "Please select a customer to check out.")
             return
         cust_id = int(self.customers.item(row,0).text())
         conn = self.controller.db.connect()
@@ -456,17 +515,18 @@ class HotelView(QWidget):
         cur.execute("SELECT id, room_id FROM Reservations WHERE customer_id=? AND status='CheckedIn' ORDER BY id DESC LIMIT 1", (cust_id,))
         res = cur.fetchone()
         if not res:
-            QMessageBox.warning(self, "Error", "No active stay found for this customer.")
+            MessageBox.warning(self, "No Active Stay", "No active stay found for this customer.")
             return
         cur.execute("UPDATE Reservations SET status='CheckedOut', check_out=? WHERE id=?", (datetime.date.today().isoformat(), res["id"]))
         cur.execute("UPDATE Rooms SET status='Cleaning' WHERE id=?", (res["room_id"],))
         conn.commit()
-        self.refresh()
-        QMessageBox.information(self, "Success", "Customer checked out successfully.")
+        self.refresh_customers()
+        self.refresh_rooms()
+        MessageBox.success(self, "Check-out Successful", "Customer checked out successfully!")
     def check_in(self):
         row = self.reservations.currentRow()
         if row < 0:
-            QMessageBox.warning(self, "Selection", "Please select a reservation.")
+            MessageBox.warning(self, "Selection Required", "Please select a reservation to check in.")
             return
         res_id = int(self.reservations.item(row,0).text())
         conn = self.controller.db.connect()
@@ -475,12 +535,12 @@ class HotelView(QWidget):
         cur.execute("UPDATE Rooms SET status='Occupied' WHERE number=?", (self.reservations.item(row,2).text(),))
         conn.commit()
         self.refresh()
-        QMessageBox.information(self, "Success", "Reservation checked in.")
+        MessageBox.success(self, "Reservation Check-in", "Reservation checked in successfully!")
 
     def check_out(self):
         row = self.reservations.currentRow()
         if row < 0:
-            QMessageBox.warning(self, "Selection", "Please select a reservation.")
+            MessageBox.warning(self, "Selection Required", "Please select a reservation to check out.")
             return
         res_id = int(self.reservations.item(row,0).text())
         conn = self.controller.db.connect()
@@ -488,5 +548,6 @@ class HotelView(QWidget):
         cur.execute("UPDATE Reservations SET status='CheckedOut', check_out=? WHERE id=?", (datetime.date.today().isoformat(), res_id))
         cur.execute("UPDATE Rooms SET status='Cleaning' WHERE number=?", (self.reservations.item(row,2).text(),))
         conn.commit()
-        self.refresh()
-        QMessageBox.information(self, "Success", "Reservation checked out.")
+        self.refresh_reservations()
+        self.refresh_rooms()
+        MessageBox.success(self, "Reservation Check-out", "Reservation checked out successfully!")

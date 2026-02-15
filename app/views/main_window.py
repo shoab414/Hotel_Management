@@ -1,6 +1,6 @@
 from PySide6.QtWidgets import QMainWindow, QWidget, QHBoxLayout, QVBoxLayout, QPushButton, QStackedWidget, QLabel
 from PySide6.QtCore import Qt, QPropertyAnimation, QRect
-from utils.theme import ThemeManager
+from app.utils.theme import ThemeManager
 from .dashboard_view import DashboardView
 from .hotel_view import HotelView
 from .pos_view import POSView

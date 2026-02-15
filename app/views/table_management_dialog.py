@@ -1,0 +1,333 @@
+from PySide6.QtWidgets import QDialog, QVBoxLayout, QHBoxLayout, QLabel, QPushButton, QTableWidget, QTableWidgetItem, QHeaderView, QFormLayout, QMessageBox
+from PySide6.QtCore import Qt
+from PySide6.QtGui import QTextDocument
+from PySide6.QtPrintSupport import QPrinter
+from app.utils.message import MessageBox
+from app.views.payment_dialog import PaymentDialog
+import datetime
+import os
+import logging
+from app.utils.message import MessageBox
+from app.views.add_order_dialog import AddOrderDialog
+
+class TableManagementDialog(QDialog):
+    def __init__(self, table_id, controller, parent=None):
+        super().__init__(parent)
+        logging.info(f"TableManagementDialog __init__ called for table_id: {table_id}")
+        self.table_id = table_id
+        self.controller = controller
+        self.setWindowTitle(f"Manage Table {self.get_table_number(table_id)}")
+        self.setMinimumSize(800, 600)
+
+        self.layout = QVBoxLayout(self)
+        self.layout.setContentsMargins(20, 20, 20, 20) # Add margins
+        self.layout.setSpacing(15) # Add spacing between widgets
+
+        self.title_label = QLabel(f"Orders for Table {self.get_table_number(table_id)}")
+        self.title_label.setObjectName("PageTitle")
+        self.layout.addWidget(self.title_label)
+
+        # Orders Table (now displays individual items from all orders)
+        self.orders_table = QTableWidget(0, 4) # Item, Qty, Price, Subtotal
+        self.orders_table.setHorizontalHeaderLabels(["Item", "Qty", "Price", "Subtotal"])
+        self.orders_table.setEditTriggers(QTableWidget.NoEditTriggers)
+        self.orders_table.setSelectionBehavior(QTableWidget.SelectRows)
+        self.orders_table.setSelectionMode(QTableWidget.NoSelection) # No selection needed for individual items
+        self.orders_table.horizontalHeader().setStretchLastSection(True)
+        self.orders_table.horizontalHeader().setSectionResizeMode(QHeaderView.Stretch) # Distribute columns evenly
+        self.layout.addWidget(self.orders_table)
+
+        # Summary Labels
+        summary_layout = QFormLayout()
+        summary_layout.setContentsMargins(0, 10, 0, 10) # Add vertical padding to summary
+        summary_layout.setSpacing(5)
+        self.total_label = QLabel("Total: ₹0.00")
+        self.gst_label = QLabel("GST (5%): ₹0.00")
+        self.grand_total_label = QLabel("Grand Total: ₹0.00")
+        
+        # Make summary labels bold for emphasis
+        font = self.total_label.font()
+        font.setBold(True)
+        self.total_label.setFont(font)
+        self.gst_label.setFont(font)
+        self.grand_total_label.setFont(font)
+
+        summary_layout.addRow(self.total_label)
+        summary_layout.addRow(self.gst_label)
+        summary_layout.addRow(self.grand_total_label)
+        self.layout.addLayout(summary_layout)
+
+        # Buttons
+        self.button_layout = QHBoxLayout()
+        self.button_layout.setSpacing(10) # Spacing between buttons
+
+        # Grouping action buttons
+        action_buttons_layout = QHBoxLayout()
+        action_buttons_layout.setSpacing(10)
+        self.btn_add_order = QPushButton("Add Order")
+        self.btn_add_order.setObjectName("PrimaryButton")
+        self.btn_edit_order = QPushButton("Edit Order")
+        self.btn_edit_order.setEnabled(False) # Disable edit for now
+        self.btn_delete_order = QPushButton("Delete Order")
+        self.btn_delete_order.setEnabled(False) # Disable delete for now
+        action_buttons_layout.addWidget(self.btn_add_order)
+        action_buttons_layout.addWidget(self.btn_edit_order)
+        action_buttons_layout.addWidget(self.btn_delete_order)
+        self.button_layout.addLayout(action_buttons_layout)
+        
+        self.button_layout.addStretch() # Spacer to push buttons to ends
+
+        # Grouping payment/bill buttons
+        payment_buttons_layout = QHBoxLayout()
+        payment_buttons_layout.setSpacing(10)
+        self.btn_generate_bill = QPushButton("Generate Bill")
+        self.btn_generate_bill.setObjectName("PrimaryButton")
+        self.btn_pay = QPushButton("Pay") # New Pay button
+        self.btn_mark_available = QPushButton("Mark Available") # New Mark Available button
+        payment_buttons_layout.addWidget(self.btn_generate_bill)
+        payment_buttons_layout.addWidget(self.btn_pay)
+        payment_buttons_layout.addWidget(self.btn_mark_available) # Add Mark Available button
+        self.button_layout.addLayout(payment_buttons_layout)
+
+        self.layout.addLayout(self.button_layout)
+
+        self.refresh_orders() # Re-enable refresh_orders
+
+        # Connect signals
+        self.btn_add_order.clicked.connect(self.add_order)
+        self.btn_edit_order.clicked.connect(self.edit_order)
+        self.btn_delete_order.clicked.connect(self.delete_order)
+        self.btn_generate_bill.clicked.connect(self.generate_bill)
+        self.btn_pay.clicked.connect(self.process_payment) # Connect Pay button
+        self.btn_mark_available.clicked.connect(self.mark_table_available) # Connect Mark Available button
+
+    def get_table_number(self, table_id):
+        conn = self.controller.db.connect()
+        cur = conn.cursor()
+        cur.execute("SELECT number FROM Tables WHERE id = ?", (table_id,))
+        result = cur.fetchone()
+        return result['number'] if result else "N/A"
+
+    def refresh_orders(self):
+        logging.info(f"Starting refresh_orders for table_id: {self.table_id}")
+        self.orders_table.setRowCount(0) # Clear existing rows
+        total_amount = 0.0
+
+        # Fetch all active orders for the table
+        conn = self.controller.db.connect()
+        cur = conn.cursor()
+        cur.execute("SELECT id, status FROM Orders WHERE table_id = ? AND status IN ('Pending', 'Preparing', 'Ready')", (self.table_id,))
+        orders = cur.fetchall()
+        logging.info(f"Fetched {len(orders)} active orders for table_id {self.table_id}: {orders}")
+
+        row_idx = 0
+        if not orders:
+            logging.info(f"No active orders found for table_id {self.table_id}.")
+        for order in orders:
+            # Fetch order items
+            cur.execute("""
+                SELECT od.qty, m.name, od.price
+                FROM OrderDetails od
+                JOIN MenuItems m ON od.item_id = m.id
+                WHERE od.order_id = ?
+            """, (order['id'],))
+            items = cur.fetchall()
+            logging.info(f"Order {order['id']} has {len(items)} items: {items}")
+
+            if not items:
+                logging.warning(f"Order {order['id']} has no items. Skipping display for this order.")
+                continue
+
+            for item in items:
+                item_subtotal = item['qty'] * item['price']
+                self.orders_table.insertRow(row_idx)
+                self.orders_table.setItem(row_idx, 0, QTableWidgetItem(item['name']))
+                self.orders_table.setItem(row_idx, 1, QTableWidgetItem(str(item['qty'])))
+                self.orders_table.setItem(row_idx, 2, QTableWidgetItem(f"₹{item['price']:.2f}"))
+                self.orders_table.setItem(row_idx, 3, QTableWidgetItem(f"₹{item_subtotal:.2f}"))
+                total_amount += item_subtotal
+                row_idx += 1
+        
+        # Calculate GST and Grand Total
+        gst_rate = 0.05 # 5% GST
+        gst_amount = total_amount * gst_rate
+        grand_total = total_amount + gst_amount
+
+        # Update summary labels
+        self.total_label.setText(f"Total: ₹{total_amount:.2f}")
+        self.gst_label.setText(f"GST ({gst_rate*100:.0f}%): ₹{gst_amount:.2f}")
+        self.grand_total_label.setText(f"Grand Total: ₹{grand_total:.2f}")
+
+        self.orders_table.resizeColumnsToContents()
+        self.orders_table.resizeRowsToContents()
+        logging.info(f"Finished refresh_orders for table_id: {self.table_id}. Total amount: {total_amount:.2f}")
+
+    def add_order(self):
+        dialog = AddOrderDialog(self.table_id, self.controller, self)
+        if dialog.exec():
+            self.refresh_orders()
+            self.controller.hotel_view.refresh_tables()
+
+    def edit_order(self):
+        MessageBox.info(self, "Edit Order", "Editing individual order items is not yet implemented.")
+
+    def delete_order(self):
+        MessageBox.info(self, "Delete Order", "Deleting individual order items is not yet implemented.")
+
+    def generate_bill(self):
+        conn = self.controller.db.connect()
+        cur = conn.cursor()
+
+        # Fetch all active orders for this table
+        cur.execute("""
+            SELECT id FROM Orders
+            WHERE table_id = ? AND status NOT IN ('Completed', 'Billed')
+        """, (self.table_id,))
+        active_order_ids = [row['id'] for row in cur.fetchall()]
+
+        if not active_order_ids:
+            MessageBox.info(self, "Generate Bill", "No active orders to bill for this table.")
+            return
+
+        total_bill = 0
+        bill_details = []
+
+        for order_id in active_order_ids:
+            cur.execute("""
+                SELECT od.qty, m.name, od.price
+                FROM OrderDetails od
+                JOIN MenuItems m ON od.item_id = m.id
+                WHERE od.order_id = ?
+            """, (order_id,))
+            items = cur.fetchall()
+            
+            order_total = 0
+            order_items_details = []
+            for item in items:
+                item_cost = item['qty'] * item['price']
+                order_total += item_cost
+                order_items_details.append(f"{item['qty']}x {item['name']} (@₹{item['price']:.2f} each) = ₹{item_cost:.2f}")
+            
+            total_bill += order_total
+            bill_details.append(f"Order ID: {order_id} (Total: ₹{order_total:.2f})\n  " + "\n  ".join(order_items_details))
+
+        detailed_bill_text = "\n\n".join(bill_details)
+        
+        if MessageBox.confirm(self, "Confirm Bill Generation", 
+                              f"Total Bill for Table {self.get_table_number(self.table_id)}: ₹{total_bill:.2f}\n\n"
+                              f"Do you want to finalize this bill and mark orders as completed?",
+                              detailed_text=detailed_bill_text):
+            try:
+                # Update orders status to 'Completed'
+                for order_id in active_order_ids:
+                    cur.execute("UPDATE Orders SET status = 'Completed' WHERE id = ?", (order_id,))
+                
+                # Update table status to 'Cleaning'
+                cur.execute("UPDATE Tables SET status = 'Cleaning' WHERE id = ?", (self.table_id,))
+                
+                conn.commit()
+                MessageBox.success(self, "Bill Generated", 
+                                    f"Bill for Table {self.get_table_number(self.table_id)} (₹{total_bill:.2f}) has been finalized.\n"
+                                    "Table status set to 'Cleaning' and orders marked as 'Completed'.")
+                self.refresh_orders()
+                self.controller.hotel_view.refresh_tables() # Refresh tables in main view
+
+                # Generate PDF bill
+                html = "<h2>Restaurant Bill</h2>"
+                html += f"<p>Table #{self.get_table_number(self.table_id)} - {datetime.datetime.now().strftime('%Y-%m-%d %H:%M')}</p>"
+                html += "<table border='1' cellspacing='0' cellpadding='4'><tr><th>Item</th><th>Qty</th><th>Price</th><th>Total</th></tr>"
+                
+                for order_id in active_order_ids:
+                    cur.execute("""
+                        SELECT od.qty, m.name, od.price
+                        FROM OrderDetails od
+                        JOIN MenuItems m ON od.item_id = m.id
+                        WHERE od.order_id = ?
+                    """, (order_id,))
+                    items = cur.fetchall()
+                    
+                    for item in items:
+                        item_cost = item['qty'] * item['price']
+                        html += f"<tr><td>{item['name']}</td><td>{item['qty']}</td><td>₹{item['price']:.2f}</td><td>₹{item_cost:.2f}</td></tr>"
+                
+                gst_rate_pdf = 0.05 # 5% GST for PDF
+                gst_pdf = round(total_bill * gst_rate_pdf, 2)
+                total_with_gst_pdf = total_bill + gst_pdf
+
+                html += "</table>"
+                html += f"<p>Subtotal: ₹{total_bill:.2f}</p><p>GST ({gst_rate_pdf*100:.0f}%): ₹{gst_pdf:.2f}</p><h3>Total: ₹{total_with_gst_pdf:.2f}</h3>"
+                
+                doc = QTextDocument()
+                doc.setHtml(html)
+                pdf_path = os.path.join(os.getcwd(), f"bill_table_{self.get_table_number(self.table_id)}_{datetime.datetime.now().strftime('%Y%m%d%H%M%S')}.pdf")
+                printer = QPrinter(QPrinter.HighResolution)
+                printer.setOutputFormat(QPrinter.PdfFormat)
+                printer.setOutputFileName(pdf_path)
+                doc.print(printer)
+                MessageBox.info(self, "Bill PDF Generated", f"Bill saved as {os.path.basename(pdf_path)}")
+            except Exception as e:
+                conn.rollback()
+                MessageBox.error(self, "Billing Error", f"Failed to finalize bill: {e}")
+
+    def process_payment(self):
+        grand_total_text = self.grand_total_label.text()
+        # Extract the numerical value from "Grand Total: ₹X.XX"
+        try:
+            grand_total = float(grand_total_text.split('₹')[1])
+        except (IndexError, ValueError):
+            MessageBox.warning(self, "Payment Error", "Could not determine grand total for payment.")
+            return
+
+        if grand_total <= 0:
+            MessageBox.information(self, "Payment", "No outstanding amount to pay.")
+            return
+
+        payment_dialog = PaymentDialog(self, total_amount=grand_total)
+        if payment_dialog.exec() == QDialog.Accepted:
+            payment_method = payment_dialog.payment_method
+            MessageBox.information(self, "Payment Successful",
+                                   f"Payment of ₹{grand_total:.2f} received via {payment_method}. Table {self.table_number} is now available.")
+            self.update_table_status_to_available()
+            self.accept() # Close the dialog after successful payment
+        else:
+            MessageBox.information(self, "Payment Cancelled", "Payment process was cancelled.")
+
+    def update_table_status_to_available(self):
+        conn = self.controller.db.connect()
+        cur = conn.cursor()
+        try:
+            # Update table status to 'Available'
+            cur.execute("UPDATE Tables SET status = ? WHERE id = ?", ("Available", self.table_id))
+            # Update all orders associated with this table to 'Completed'
+            cur.execute("UPDATE Orders SET status = ? WHERE table_id = ?", ("Completed", self.table_id))
+            conn.commit()
+            logging.info(f"Table {self.table_id} status updated to 'Available' and all orders marked 'Completed'.")
+            self.controller.hotel_view.refresh_tables() # Notify hotel_view to refresh
+        except Exception as e:
+            conn.rollback()
+            logging.error(f"Failed to update table status or orders for table {self.table_id}: {e}")
+            MessageBox.error(self, "Database Error", f"Failed to update table status after payment: {e}")
+        finally:
+            conn.close()
+
+    def mark_table_available(self):
+        if MessageBox.confirm(self, "Confirm Action", 
+                              f"Are you sure you want to mark Table {self.get_table_number(self.table_id)} as 'Available' and clear all its active orders?"):
+            conn = self.controller.db.connect()
+            cur = conn.cursor()
+            try:
+                # Update table status to 'Available'
+                cur.execute("UPDATE Tables SET status = ? WHERE id = ?", ("Available", self.table_id))
+                # Update all active orders associated with this table to 'Completed'
+                cur.execute("UPDATE Orders SET status = ? WHERE table_id = ? AND status NOT IN ('Completed', 'Billed')", ("Completed", self.table_id))
+                conn.commit()
+                logging.info(f"Table {self.table_id} status updated to 'Available' and active orders marked 'Completed' by manual action.")
+                MessageBox.success(self, "Table Status Updated", f"Table {self.get_table_number(self.table_id)} is now 'Available'.")
+                self.controller.hotel_view.refresh_tables() # Notify hotel_view to refresh
+                self.accept() # Close the dialog
+            except Exception as e:
+                conn.rollback()
+                logging.error(f"Failed to manually update table status or orders for table {self.table_id}: {e}")
+                MessageBox.error(self, "Database Error", f"Failed to mark table available: {e}")
+            finally:
+                conn.close()

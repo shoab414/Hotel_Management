@@ -1,6 +1,6 @@
 from PySide6.QtWidgets import QWidget, QVBoxLayout, QLineEdit, QPushButton, QLabel, QFrame
 from PySide6.QtCore import Qt
-from services.auth_service import AuthService
+from app.services.auth_service import AuthService
 import logging
 
 class LoginWindow(QWidget):

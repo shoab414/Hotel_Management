@@ -1,10 +1,10 @@
 import sys
 import os
 from PySide6.QtWidgets import QApplication
-from core.app import AppController
-from utils.theme import ThemeManager
-from views.login_view import LoginWindow
-from core.database import DatabaseManager
+from app.core.app import AppController
+from app.utils.theme import ThemeManager
+from app.views.login_view import LoginWindow
+from app.core.database import DatabaseManager
 import logging
 
 def main():

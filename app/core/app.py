@@ -1,5 +1,5 @@
 from PySide6.QtWidgets import QApplication
-from views.main_window import MainWindow
+from app.views.main_window import MainWindow
 
 class AppController:
     def __init__(self, db, app: QApplication):
