@@ -1,4 +1,4 @@
-from PySide6.QtWidgets import QWidget, QVBoxLayout, QHBoxLayout, QTableWidget, QTableWidgetItem, QPushButton, QComboBox, QLabel, QMessageBox
+from PySide6.QtWidgets import QWidget, QVBoxLayout, QHBoxLayout, QTableWidget, QTableWidgetItem, QPushButton, QComboBox, QLabel, QMessageBox, QHeaderView
 from PySide6.QtCore import Qt
 from PySide6.QtGui import QShowEvent
 from PySide6.QtGui import QTextDocument
@@ -32,6 +32,7 @@ class BillingView(QWidget):
         v.addLayout(top)
         self.orders = QTableWidget(0,4)
         self.orders.setHorizontalHeaderLabels(["Order ID","Items","Amount","Status"])
+        self.orders.verticalHeader().setSectionResizeMode(QHeaderView.ResizeToContents)
         v.addWidget(self.orders)
         self.btn_invoice.clicked.connect(self.generate_invoice)
         self.refresh()

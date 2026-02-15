@@ -1,4 +1,4 @@
-from PySide6.QtWidgets import QWidget, QVBoxLayout, QHBoxLayout, QListWidget, QTableWidget, QTableWidgetItem, QPushButton, QComboBox, QLabel, QMessageBox
+from PySide6.QtWidgets import QWidget, QVBoxLayout, QHBoxLayout, QListWidget, QTableWidget, QTableWidgetItem, QPushButton, QComboBox, QLabel, QMessageBox, QHeaderView
 from PySide6.QtCore import Qt
 from PySide6.QtGui import QShowEvent
 import datetime
@@ -46,6 +46,7 @@ class POSView(QWidget):
         self.menu.setHorizontalHeaderLabels(["Item","Category","Price"])
         self.cart = QTableWidget(0,3)
         self.cart.setHorizontalHeaderLabels(["Item","Qty","Price"])
+        self.cart.verticalHeader().setSectionResizeMode(QHeaderView.ResizeToContents)
         mid.addWidget(self.menu,2)
         mid.addWidget(self.cart,1)
         v.addLayout(mid)

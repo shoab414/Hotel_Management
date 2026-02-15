@@ -15,6 +15,11 @@ class DatabaseManager:
             self.conn.row_factory = sqlite3.Row
         return self.conn
 
+    def close(self):
+        if self.conn:
+            self.conn.close()
+            self.conn = None
+
     def initialize(self):
         conn = self.connect()
         cur = conn.cursor()
@@ -140,81 +145,9 @@ class DatabaseManager:
             self.create_user("admin", "admin123", "Admin")
             self.create_user("manager", "manager123", "Manager")
             self.create_user("staff", "staff123", "Staff")
-        cur.execute("SELECT COUNT(*) AS c FROM Rooms")
-        if cur.fetchone()["c"] == 0:
-            rooms = [
-                ("101", "Standard", "Available", 2500.0),
-                ("102", "Deluxe", "Available", 4000.0),
-                ("201", "Suite", "Cleaning", 7000.0),
-                ("202", "Deluxe", "Occupied", 4200.0)
-            ]
-            cur.executemany("INSERT INTO Rooms(number,category,status,rate) VALUES(?,?,?,?)", rooms)
-        cur.execute("SELECT COUNT(*) AS c FROM Tables")
-        if cur.fetchone()["c"] == 0:
-            tables = [(i, "Available") for i in range(1, 11)]
-            cur.executemany("INSERT INTO Tables(number,status) VALUES(?,?)", tables)
-        cur.execute("SELECT COUNT(*) AS c FROM MenuItems")
-        if cur.fetchone()["c"] == 0:
-            items = [
-                ("Paneer Tikka", "Starter", 220.0, 1),
-                ("Veg Biryani", "Main", 280.0, 1),
-                ("Chicken Curry", "Main", 320.0, 1),
-                ("Gulab Jamun", "Dessert", 120.0, 1),
-                ("Masala Dosa", "Main", 200.0, 1)
-            ]
-            cur.executemany("INSERT INTO MenuItems(name,category,price,active) VALUES(?,?,?,?)", items)
-        cur.execute("SELECT COUNT(*) AS c FROM Suppliers")
-        if cur.fetchone()["c"] == 0:
-            suppliers = [
-                ("FreshFoods Ltd", "9990001111", "fresh@example.com"),
-                ("Daily Dairy", "9990002222", "dairy@example.com")
-            ]
-            cur.executemany("INSERT INTO Suppliers(name,phone,email) VALUES(?,?,?)", suppliers)
-        cur.execute("SELECT COUNT(*) AS c FROM Inventory")
-        if cur.fetchone()["c"] == 0:
-            inventory = [
-                ("Rice", 50, "kg", 10, 1),
-                ("Paneer", 20, "kg", 5, 2),
-                ("Spices Mix", 8, "kg", 5, 1),
-                ("Cooking Oil", 15, "L", 5, 1)
-            ]
-            cur.executemany("INSERT INTO Inventory(name,qty,unit,threshold,supplier_id) VALUES(?,?,?,?,?)", inventory)
-        cur.execute("SELECT COUNT(*) AS c FROM Customers")
-        if cur.fetchone()["c"] == 0:
-            customers = [
-                ("Rahul Sharma", "9001112223", "rahul@example.com"),
-                ("Aisha Khan", "9003334445", "aisha@example.com")
-            ]
-            cur.executemany("INSERT INTO Customers(name,phone,email) VALUES(?,?,?)", customers)
         conn.commit()
-        self._seed_sales_samples()
 
-    def _seed_sales_samples(self):
-        conn = self.conn
-        cur = conn.cursor()
-        cur.execute("SELECT COUNT(*) AS c FROM Orders")
-        if cur.fetchone()["c"] == 0:
-            now = datetime.datetime.now()
-            for d in range(0, 30):
-                day = now - datetime.timedelta(days=d)
-                cur.execute("INSERT INTO Orders(table_id,customer_id,status,created_at) VALUES(?,?,?,?)",
-                            (1, 1, "Paid", day.isoformat()))
-                order_id = cur.lastrowid
-                cur.execute("SELECT id, price FROM MenuItems LIMIT 3")
-                for row in cur.fetchall():
-                    cur.execute("INSERT INTO OrderDetails(order_id,item_id,qty,price,kitchen_status) VALUES(?,?,?,?,?)",
-                                (order_id, row["id"], 1 + (d % 2), row["price"], "Served"))
-                cur.execute("SELECT SUM(qty*price) AS amt FROM OrderDetails WHERE order_id=?", (order_id,))
-                amt = cur.fetchone()["amt"] or 0
-                gst = round(amt * 0.18, 2)
-                cur.execute("INSERT INTO Payments(order_id,amount,gst,method,paid_at) VALUES(?,?,?,?,?)",
-                            (order_id, amt, gst, "Cash", day.isoformat()))
-        cur.execute("SELECT COUNT(*) AS c FROM Reservations")
-        if cur.fetchone()["c"] == 0:
-            today = datetime.date.today()
-            cur.execute("INSERT INTO Reservations(customer_id,room_id,check_in,check_out,status) VALUES(?,?,?,?,?)",
-                        (1, 1, today.isoformat(), (today + datetime.timedelta(days=1)).isoformat(), "CheckedIn"))
-        conn.commit()
+
 
     def create_user(self, username, password, role):
         salt = secrets.token_hex(16)

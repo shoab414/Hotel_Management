@@ -1,3 +1,4 @@
+import logging
 from PySide6.QtWidgets import QMainWindow, QWidget, QHBoxLayout, QVBoxLayout, QPushButton, QStackedWidget, QLabel
 from PySide6.QtCore import Qt, QPropertyAnimation, QRect
 from app.utils.theme import ThemeManager
@@ -9,6 +10,7 @@ from .analytics_view import AnalyticsView
 from .billing_view import BillingView
 from .table_view import TableView
 from .guest_view import GuestView
+from .menu_management_view import MenuManagementView
 
 class MainWindow(QMainWindow):
     def __init__(self, controller):
@@ -53,10 +55,11 @@ class MainWindow(QMainWindow):
         self.btn_guests = QPushButton("Guests")
         self.btn_billing = QPushButton("Billing")
         self.btn_inventory = QPushButton("Inventory")
+        self.btn_menu_management = QPushButton("Menu")
         self.btn_reports = QPushButton("Reports")
         self.btn_theme = QPushButton("Toggle Theme")
         self.btn_theme.setObjectName("ThemeButton")
-        for b in [self.btn_dashboard, self.btn_hotel, self.btn_tables, self.btn_guests, self.btn_billing, self.btn_inventory, self.btn_reports]:
+        for b in [self.btn_dashboard, self.btn_hotel, self.btn_tables, self.btn_guests, self.btn_billing, self.btn_inventory, self.btn_menu_management, self.btn_reports]:
             b.setCheckable(True)
             b.setObjectName("NavButton")
             v.addWidget(b)
@@ -68,7 +71,8 @@ class MainWindow(QMainWindow):
         self.btn_guests.clicked.connect(lambda: self._switch(3))
         self.btn_billing.clicked.connect(lambda: self._switch(4))
         self.btn_inventory.clicked.connect(lambda: self._switch(5))
-        self.btn_reports.clicked.connect(lambda: self._switch(6))
+        self.btn_menu_management.clicked.connect(lambda: self._switch(6))
+        self.btn_reports.clicked.connect(lambda: self._switch(7))
         self.btn_theme.clicked.connect(self._toggle_theme)
         self.btn_dashboard.setChecked(True)
 
@@ -79,15 +83,19 @@ class MainWindow(QMainWindow):
         self.page_guests = GuestView(self.controller)
         self.page_billing = BillingView(self.controller)
         self.page_inventory = InventoryView(self.controller)
+        self.page_menu_management = MenuManagementView(self.controller)
         self.page_reports = AnalyticsView(self.controller)
-        for p in [self.page_dashboard, self.page_hotel, self.page_tables, self.page_guests, self.page_billing, self.page_inventory, self.page_reports]:
+        for p in [self.page_dashboard, self.page_hotel, self.page_tables, self.page_guests, self.page_billing, self.page_inventory, self.page_menu_management, self.page_reports]:
             self.stack.addWidget(p)
 
     def _switch(self, index):
         old = self.stack.currentIndex()
         self.stack.setCurrentIndex(index)
+        current_widget = self.stack.currentWidget()
+        if hasattr(current_widget, 'refresh'):
+            current_widget.refresh()
         self._animate_transition(old, index)
-        for i, b in enumerate([self.btn_dashboard, self.btn_hotel, self.btn_tables, self.btn_guests, self.btn_billing, self.btn_inventory, self.btn_reports]):
+        for i, b in enumerate([self.btn_dashboard, self.btn_hotel, self.btn_tables, self.btn_guests, self.btn_billing, self.btn_inventory, self.btn_menu_management, self.btn_reports]):
             b.setChecked(i == index)
 
     def _animate_transition(self, old, new):

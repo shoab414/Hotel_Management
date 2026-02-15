@@ -176,5 +176,5 @@ class AddOrderDialog(QDialog):
             conn.rollback()
             logging.error(f"Failed to save order for table {self.table_id}: {e}", exc_info=True)
             MessageBox.error(self, "Error Saving Order", f"Failed to save order: {e}")
-        finally:
-            conn.close()
+
+

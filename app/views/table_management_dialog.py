@@ -30,6 +30,7 @@ class TableManagementDialog(QDialog):
         # Orders Table (now displays individual items from all orders)
         self.orders_table = QTableWidget(0, 4) # Item, Qty, Price, Subtotal
         self.orders_table.setHorizontalHeaderLabels(["Item", "Qty", "Price", "Subtotal"])
+        self.orders_table.verticalHeader().setSectionResizeMode(QHeaderView.ResizeToContents)
         self.orders_table.setEditTriggers(QTableWidget.NoEditTriggers)
         self.orders_table.setSelectionBehavior(QTableWidget.SelectRows)
         self.orders_table.setSelectionMode(QTableWidget.NoSelection) # No selection needed for individual items
@@ -140,6 +141,7 @@ class TableManagementDialog(QDialog):
 
             for item in items:
                 item_subtotal = item['qty'] * item['price']
+                logging.info(f"  - Item: {item['name']}, Qty: {item['qty']}, Price: {item['price']:.2f}, Subtotal: {item_subtotal:.2f}")
                 self.orders_table.insertRow(row_idx)
                 self.orders_table.setItem(row_idx, 0, QTableWidgetItem(item['name']))
                 self.orders_table.setItem(row_idx, 1, QTableWidgetItem(str(item['qty'])))
@@ -307,7 +309,7 @@ class TableManagementDialog(QDialog):
             conn.rollback()
             logging.error(f"Failed to update table status or orders for table {self.table_id}: {e}")
             MessageBox.error(self, "Database Error", f"Failed to update table status after payment: {e}")
-        # Removed conn.close() to prevent premature closing of the database connection
+        # Removed  to prevent premature closing of the database connection
 
     def mark_table_available(self):
         logging.info(f"mark_table_available called for table_id: {self.table_id}")

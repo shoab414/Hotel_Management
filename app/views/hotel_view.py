@@ -1,4 +1,4 @@
-from PySide6.QtWidgets import QWidget, QVBoxLayout, QHBoxLayout, QPushButton, QTableWidget, QTableWidgetItem, QComboBox, QLineEdit, QSpinBox, QDialog, QFormLayout, QLabel, QTabWidget, QGridLayout, QMessageBox
+from PySide6.QtWidgets import QWidget, QVBoxLayout, QHBoxLayout, QPushButton, QTableWidget, QTableWidgetItem, QComboBox, QLineEdit, QSpinBox, QDialog, QFormLayout, QLabel, QTabWidget, QGridLayout, QMessageBox, QHeaderView
 from PySide6.QtCore import Qt
 import datetime
 from app.views.table_management_dialog import TableManagementDialog
@@ -152,6 +152,7 @@ class HotelView(QWidget):
         res_layout.addLayout(res_bar)
         self.reservations = QTableWidget(0, 5)
         self.reservations.setHorizontalHeaderLabels(["ID","Customer","Room","Check-in","Check-out"])
+        self.reservations.verticalHeader().setSectionResizeMode(QHeaderView.ResizeToContents)
         res_layout.addWidget(self.reservations)
         self.tabs.addTab(res_tab, "Reservations")
 
