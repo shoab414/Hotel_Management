@@ -307,18 +307,21 @@ class TableManagementDialog(QDialog):
             conn.rollback()
             logging.error(f"Failed to update table status or orders for table {self.table_id}: {e}")
             MessageBox.error(self, "Database Error", f"Failed to update table status after payment: {e}")
-        finally:
-            conn.close()
+        # Removed conn.close() to prevent premature closing of the database connection
 
     def mark_table_available(self):
+        logging.info(f"mark_table_available called for table_id: {self.table_id}")
         if MessageBox.confirm(self, "Confirm Action", 
                               f"Are you sure you want to mark Table {self.get_table_number(self.table_id)} as 'Available' and clear all its active orders?"):
+            logging.info(f"User confirmed marking table {self.table_id} as available.")
             conn = self.controller.db.connect()
             cur = conn.cursor()
             try:
                 # Update table status to 'Available'
+                logging.info(f"Attempting to update Tables status to 'Available' for table_id: {self.table_id}")
                 cur.execute("UPDATE Tables SET status = ? WHERE id = ?", ("Available", self.table_id))
                 # Update all active orders associated with this table to 'Completed'
+                logging.info(f"Attempting to update active Orders status to 'Completed' for table_id: {self.table_id}")
                 cur.execute("UPDATE Orders SET status = ? WHERE table_id = ? AND status NOT IN ('Completed', 'Billed')", ("Completed", self.table_id))
                 conn.commit()
                 logging.info(f"Table {self.table_id} status updated to 'Available' and active orders marked 'Completed' by manual action.")
@@ -327,7 +330,8 @@ class TableManagementDialog(QDialog):
                 self.accept() # Close the dialog
             except Exception as e:
                 conn.rollback()
-                logging.error(f"Failed to manually update table status or orders for table {self.table_id}: {e}")
+                logging.error(f"Failed to manually update table status or orders for table {self.table_id}: {e}", exc_info=True)
                 MessageBox.error(self, "Database Error", f"Failed to mark table available: {e}")
-            finally:
-                conn.close()
+            # Removed conn.close() to prevent premature closing of the database connection
+        else:
+            logging.info(f"User cancelled marking table {self.table_id} as available.")

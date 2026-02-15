@@ -3,10 +3,12 @@ from PySide6.QtCore import Qt, QPropertyAnimation, QRect
 from app.utils.theme import ThemeManager
 from .dashboard_view import DashboardView
 from .hotel_view import HotelView
-from .pos_view import POSView
+
 from .inventory_view import InventoryView
 from .analytics_view import AnalyticsView
 from .billing_view import BillingView
+from .table_view import TableView
+from .guest_view import GuestView
 
 class MainWindow(QMainWindow):
     def __init__(self, controller):
@@ -47,13 +49,14 @@ class MainWindow(QMainWindow):
         v.addSpacing(28)
         self.btn_dashboard = QPushButton("Dashboard")
         self.btn_hotel = QPushButton("Hotel")
-        self.btn_pos = QPushButton("Restaurant")
+        self.btn_tables = QPushButton("Tables")
+        self.btn_guests = QPushButton("Guests")
         self.btn_billing = QPushButton("Billing")
         self.btn_inventory = QPushButton("Inventory")
         self.btn_reports = QPushButton("Reports")
         self.btn_theme = QPushButton("Toggle Theme")
         self.btn_theme.setObjectName("ThemeButton")
-        for b in [self.btn_dashboard, self.btn_hotel, self.btn_pos, self.btn_billing, self.btn_inventory, self.btn_reports]:
+        for b in [self.btn_dashboard, self.btn_hotel, self.btn_tables, self.btn_guests, self.btn_billing, self.btn_inventory, self.btn_reports]:
             b.setCheckable(True)
             b.setObjectName("NavButton")
             v.addWidget(b)
@@ -61,28 +64,30 @@ class MainWindow(QMainWindow):
         v.addWidget(self.btn_theme)
         self.btn_dashboard.clicked.connect(lambda: self._switch(0))
         self.btn_hotel.clicked.connect(lambda: self._switch(1))
-        self.btn_pos.clicked.connect(lambda: self._switch(2))
-        self.btn_billing.clicked.connect(lambda: self._switch(3))
-        self.btn_inventory.clicked.connect(lambda: self._switch(4))
-        self.btn_reports.clicked.connect(lambda: self._switch(5))
+        self.btn_tables.clicked.connect(lambda: self._switch(2))
+        self.btn_guests.clicked.connect(lambda: self._switch(3))
+        self.btn_billing.clicked.connect(lambda: self._switch(4))
+        self.btn_inventory.clicked.connect(lambda: self._switch(5))
+        self.btn_reports.clicked.connect(lambda: self._switch(6))
         self.btn_theme.clicked.connect(self._toggle_theme)
         self.btn_dashboard.setChecked(True)
 
     def _build_pages(self):
         self.page_dashboard = DashboardView(self.controller)
         self.page_hotel = HotelView(self.controller)
-        self.page_pos = POSView(self.controller)
+        self.page_tables = TableView(self.controller)
+        self.page_guests = GuestView(self.controller)
         self.page_billing = BillingView(self.controller)
         self.page_inventory = InventoryView(self.controller)
         self.page_reports = AnalyticsView(self.controller)
-        for p in [self.page_dashboard, self.page_hotel, self.page_pos, self.page_billing, self.page_inventory, self.page_reports]:
+        for p in [self.page_dashboard, self.page_hotel, self.page_tables, self.page_guests, self.page_billing, self.page_inventory, self.page_reports]:
             self.stack.addWidget(p)
 
     def _switch(self, index):
         old = self.stack.currentIndex()
         self.stack.setCurrentIndex(index)
         self._animate_transition(old, index)
-        for i, b in enumerate([self.btn_dashboard, self.btn_hotel, self.btn_pos, self.btn_billing, self.btn_inventory, self.btn_reports]):
+        for i, b in enumerate([self.btn_dashboard, self.btn_hotel, self.btn_tables, self.btn_guests, self.btn_billing, self.btn_inventory, self.btn_reports]):
             b.setChecked(i == index)
 
     def _animate_transition(self, old, new):

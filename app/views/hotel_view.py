@@ -134,16 +134,6 @@ class HotelView(QWidget):
         rooms_layout.addWidget(self.rooms)
         self.tabs.addTab(rooms_tab, "Rooms")
 
-        # ---- Tables tab ----
-        tables_tab = QWidget()
-        tables_layout = QVBoxLayout(tables_tab)
-        tables_layout.setSpacing(16)
-        self.tables_grid = QGridLayout()
-        self.tables_grid.setSpacing(10)
-        tables_layout.addLayout(self.tables_grid)
-        tables_layout.addStretch()
-        self.tabs.addTab(tables_tab, "Tables")
-
         # ---- Reservations tab ----
         res_tab = QWidget()
         res_layout = QVBoxLayout(res_tab)
@@ -165,47 +155,13 @@ class HotelView(QWidget):
         res_layout.addWidget(self.reservations)
         self.tabs.addTab(res_tab, "Reservations")
 
-        # ---- Customers tab ----
-        cust_tab = QWidget()
-        cust_layout = QVBoxLayout(cust_tab)
-        cust_layout.setSpacing(16)
-        cust_bar = QHBoxLayout()
-        self.customer_search = QLineEdit()
-        self.customer_search.setPlaceholderText("Search by name, phone, or email...")
-        self.btn_add_cust = QPushButton("Add Customer")
-        self.btn_add_cust.setObjectName("PrimaryButton")
-        self.btn_edit_cust = QPushButton("Edit")
-        self.btn_delete_cust = QPushButton("Delete")
-        self.btn_cust_checkin = QPushButton("Check-in")
-        self.btn_cust_checkout = QPushButton("Check-out")
-        self.btn_export_cust = QPushButton("Export CSV")
-        cust_bar.addWidget(self.customer_search, 1)
-        cust_bar.addWidget(self.btn_add_cust)
-        cust_bar.addWidget(self.btn_edit_cust)
-        cust_bar.addWidget(self.btn_delete_cust)
-        cust_bar.addWidget(self.btn_cust_checkin)
-        cust_bar.addWidget(self.btn_cust_checkout)
-        cust_bar.addWidget(self.btn_export_cust)
-        cust_layout.addLayout(cust_bar)
-        self.customers = QTableWidget(0, 6)
-        self.customers.setHorizontalHeaderLabels(["ID","Name","Phone","Email","Current Room","Res Status"])
-        cust_layout.addWidget(self.customers)
-        self.tabs.addTab(cust_tab, "Customers")
-
         self.btn_add_room.clicked.connect(self.add_room)
         self.btn_edit_room.clicked.connect(self.edit_room)
         self.btn_delete_room.clicked.connect(self.delete_room)
         self.btn_add_res.clicked.connect(self.add_reservation)
         self.btn_check_in.clicked.connect(self.check_in)
         self.btn_check_out.clicked.connect(self.check_out)
-        self.btn_add_cust.clicked.connect(self.add_customer)
-        self.btn_edit_cust.clicked.connect(self.edit_customer)
-        self.btn_delete_cust.clicked.connect(self.delete_customer)
-        self.btn_cust_checkin.clicked.connect(self.customer_check_in)
-        self.btn_cust_checkout.clicked.connect(self.customer_check_out)
-        self.customer_search.textChanged.connect(self.refresh_customers)
         self.res_search.textChanged.connect(self.refresh)
-        self.btn_export_cust.clicked.connect(self.export_customers_csv)
         self.refresh()
 
     def refresh(self):
@@ -242,52 +198,8 @@ class HotelView(QWidget):
             self.reservations.setItem(i,2,QTableWidgetItem(r["room"]))
             self.reservations.setItem(i,3,QTableWidgetItem(r["ci"]))
             self.reservations.setItem(i,4,QTableWidgetItem(r["co"] or ""))
-        self.refresh_customers()
-        self.refresh_tables()
 
-    def refresh_tables(self):
-        # Clear existing buttons
-        while self.tables_grid.count():
-            item = self.tables_grid.takeAt(0)
-            widget = item.widget()
-            if widget:
-                widget.deleteLater() # Schedule for deletion
-            del item # Delete the layout item
 
-        conn = self.controller.db.connect()
-        cur = conn.cursor()
-        cur.execute("SELECT id, number, status FROM Tables ORDER BY number")
-        tables = cur.fetchall()
-
-        row = 0
-        col = 0
-        for table in tables:
-            btn = QPushButton(f"Table {table['number']}\n({table['status']})")
-            btn.setFixedSize(100, 80)
-            btn.setProperty("class", "table-button")
-            if table['status'] == 'Available':
-                btn.setStyleSheet("background-color: #4CAF50; color: white;") # Green
-            elif table['status'] == 'Occupied':
-                btn.setStyleSheet("background-color: #FFC107; color: black;") # Amber
-            elif table['status'] == 'Cleaning':
-                btn.setStyleSheet("background-color: #9E9E9E; color: white;") # Grey
-            else:
-                btn.setStyleSheet("background-color: #2196F3; color: white;") # Blue (default)
-            btn.clicked.connect(lambda checked, t=table: self.open_table_management(t['id']))
-            logging.info(f"Connected click signal for Table {table['number']} (ID: {table['id']}, Status: {table['status']})")
-            self.tables_grid.addWidget(btn, row, col)
-            col += 1
-            if col > 4: # Max 5 tables per row
-                col = 0
-                row += 1
-
-    def open_table_management(self, table_id):
-        logging.info(f"Attempting to open TableManagementDialog for table_id: {table_id}")
-        dlg = TableManagementDialog(table_id, self.controller, self)
-        logging.info(f"TableManagementDialog instance created for table_id: {table_id}")
-        dlg.exec()
-        logging.info(f"TableManagementDialog for table_id: {table_id} closed.")
-        self.refresh_tables() # Refresh tables display after dialog closes
 
     def add_room(self):
         dlg = RoomDialog(self)
@@ -369,160 +281,7 @@ class HotelView(QWidget):
             self.refresh()
             QMessageBox.information(self, "Success", "Reservation created successfully.")
 
-    def refresh_customers(self):
-        """Show only active guests (Reserved/CheckedIn) or customers with no reservations. Hide checked-out."""
-        term = self.customer_search.text().strip()
-        conn = self.controller.db.connect()
-        cur = conn.cursor()
-        if term:
-            like = f"%{term}%"
-            cur.execute("""
-                SELECT c.id AS id, c.name AS name, c.phone AS phone, c.email AS email,
-                       r.room_id AS room_id, rm.number AS current_room, r.status AS res_status
-                FROM Customers c
-                LEFT JOIN Reservations r ON r.id = (
-                    SELECT id FROM Reservations WHERE customer_id=c.id AND status IN ('Reserved','CheckedIn') ORDER BY id DESC LIMIT 1
-                )
-                LEFT JOIN Rooms rm ON rm.id = r.room_id
-                WHERE (c.name LIKE ? OR c.phone LIKE ? OR c.email LIKE ?)
-                AND (r.id IS NOT NULL OR c.id NOT IN (SELECT customer_id FROM Reservations))
-                ORDER BY c.id DESC
-            """, (like, like, like))
-        else:
-            cur.execute("""
-                SELECT c.id AS id, c.name AS name, c.phone AS phone, c.email AS email,
-                       r.room_id AS room_id, rm.number AS current_room, r.status AS res_status
-                FROM Customers c
-                LEFT JOIN Reservations r ON r.id = (
-                    SELECT id FROM Reservations WHERE customer_id=c.id AND status IN ('Reserved','CheckedIn') ORDER BY id DESC LIMIT 1
-                )
-                LEFT JOIN Rooms rm ON rm.id = r.room_id
-                WHERE r.id IS NOT NULL OR c.id NOT IN (SELECT customer_id FROM Reservations)
-                ORDER BY c.id DESC
-            """)
-        rows = cur.fetchall()
-        self.customers.setRowCount(len(rows))
-        for i, r in enumerate(rows):
-            self.customers.setItem(i,0,QTableWidgetItem(str(r["id"])))
-            self.customers.setItem(i,1,QTableWidgetItem(r["name"] or ""))
-            self.customers.setItem(i,2,QTableWidgetItem(r["phone"] or ""))
-            self.customers.setItem(i,3,QTableWidgetItem(r["email"] or ""))
-            self.customers.setItem(i,4,QTableWidgetItem(r["current_room"] or ""))
-            self.customers.setItem(i,5,QTableWidgetItem(r["res_status"] or ""))
 
-    def add_customer(self):
-        dlg = CustomerDialog(self)
-        if dlg.exec():
-            if not dlg.name.text().strip():
-                MessageBox.warning(self, "Validation Required", "Customer name is required.")
-                return
-            conn = self.controller.db.connect()
-            cur = conn.cursor()
-            cur.execute("INSERT INTO Customers(name,phone,email) VALUES(?,?,?)",
-                        (dlg.name.text().strip(), dlg.phone.text().strip(), dlg.email.text().strip()))
-            conn.commit()
-            self.refresh_customers()
-            MessageBox.success(self, "Customer Added", "Customer has been added successfully!")
-
-    def edit_customer(self):
-        row = self.customers.currentRow()
-        if row < 0:
-            MessageBox.warning(self, "Selection Required", "Please select a customer to edit.")
-            return
-        cust_id = int(self.customers.item(row,0).text())
-        dlg = CustomerDialog(self)
-        dlg.name.setText(self.customers.item(row,1).text())
-        dlg.phone.setText(self.customers.item(row,2).text())
-        dlg.email.setText(self.customers.item(row,3).text())
-        if dlg.exec():
-            conn = self.controller.db.connect()
-            cur = conn.cursor()
-            cur.execute("UPDATE Customers SET name=?, phone=?, email=? WHERE id=?",
-                        (dlg.name.text().strip(), dlg.phone.text().strip(), dlg.email.text().strip(), cust_id))
-            conn.commit()
-            self.refresh_customers()
-            MessageBox.success(self, "Customer Updated", "Customer information has been updated successfully!")
-
-    def delete_customer(self):
-        row = self.customers.currentRow()
-        if row < 0:
-            MessageBox.warning(self, "Selection Required", "Please select a customer to delete.")
-            return
-        cust_id = int(self.customers.item(row,0).text())
-        if MessageBox.confirm(self, "Confirm Deletion", "Are you sure you want to delete this customer? This action cannot be undone."):
-            conn = self.controller.db.connect()
-            cur = conn.cursor()
-            cur.execute("DELETE FROM Customers WHERE id=?", (cust_id,))
-            conn.commit()
-            self.refresh_customers()
-            MessageBox.success(self, "Customer Deleted", "Customer has been deleted successfully.")
-
-    def export_customers_csv(self):
-        import csv, os
-        conn = self.controller.db.connect()
-        cur = conn.cursor()
-        cur.execute("SELECT id,name,phone,email FROM Customers ORDER BY id DESC")
-        rows = cur.fetchall()
-        app_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-        path = os.path.join(app_dir, "customers_export.csv")
-        with open(path, "w", newline="", encoding="utf-8") as f:
-            w = csv.writer(f)
-            w.writerow(["ID","Name","Phone","Email"])
-            for r in rows:
-                w.writerow([r["id"], r["name"], r["phone"] or "", r["email"] or ""])
-        MessageBox.info(self, "Export Complete", f"Exported {len(rows)} customers to customers_export.csv")
-
-    def customer_check_in(self):
-        row = self.customers.currentRow()
-        if row < 0:
-            MessageBox.warning(self, "Selection Required", "Please select a customer to check in.")
-            return
-        cust_id = int(self.customers.item(row,0).text())
-        dlg = CustomerCheckinDialog(self, self.controller.db)
-        dlg.check_in.setText(datetime.date.today().isoformat())
-        dlg.check_out.setText((datetime.date.today() + datetime.timedelta(days=1)).isoformat())
-        if dlg.exec():
-            room_number = dlg.room.currentData()
-            if not room_number:
-                QMessageBox.warning(self, "Validation", "Please select a room.")
-                return
-            conn = self.controller.db.connect()
-            cur = conn.cursor()
-            cur.execute("SELECT id, status FROM Rooms WHERE number=?", (str(room_number),))
-            room_row = cur.fetchone()
-            if not room_row:
-                QMessageBox.warning(self, "Error", "Room not found.")
-                return
-            if room_row["status"] != "Available":
-                MessageBox.warning(self, "Room Unavailable", "Selected room is not available.")
-                return
-            room_id = room_row["id"]
-            cur.execute("INSERT INTO Reservations(customer_id,room_id,check_in,check_out,status) VALUES(?,?,?,?,?)",
-                        (cust_id, room_id, dlg.check_in.text(), dlg.check_out.text(), "CheckedIn"))
-            cur.execute("UPDATE Rooms SET status='Occupied' WHERE id=?", (room_id,))
-            conn.commit()
-            self.refresh()
-            MessageBox.success(self, "Check-in Successful", "Customer checked in successfully!")
-
-    def customer_check_out(self):
-        row = self.customers.currentRow()
-        if row < 0:
-            MessageBox.warning(self, "Selection Required", "Please select a customer to check out.")
-            return
-        cust_id = int(self.customers.item(row,0).text())
-        conn = self.controller.db.connect()
-        cur = conn.cursor()
-        cur.execute("SELECT id, room_id FROM Reservations WHERE customer_id=? AND status='CheckedIn' ORDER BY id DESC LIMIT 1", (cust_id,))
-        res = cur.fetchone()
-        if not res:
-            MessageBox.warning(self, "No Active Stay", "No active stay found for this customer.")
-            return
-        cur.execute("UPDATE Reservations SET status='CheckedOut', check_out=? WHERE id=?", (datetime.date.today().isoformat(), res["id"]))
-        cur.execute("UPDATE Rooms SET status='Cleaning' WHERE id=?", (res["room_id"],))
-        conn.commit()
-        self.refresh_customers()
-        self.refresh_rooms()
-        MessageBox.success(self, "Check-out Successful", "Customer checked out successfully!")
     def check_in(self):
         row = self.reservations.currentRow()
         if row < 0:
