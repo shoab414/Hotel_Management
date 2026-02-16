@@ -131,11 +131,65 @@ class DatabaseManager:
                 unit TEXT NOT NULL,
                 threshold REAL NOT NULL DEFAULT 5,
                 supplier_id INTEGER,
+                price REAL NOT NULL DEFAULT 0,
                 FOREIGN KEY(supplier_id) REFERENCES Suppliers(id)
             )
         """)
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS InventoryConsumption(
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                inventory_id INTEGER NOT NULL,
+                qty_consumed REAL NOT NULL,
+                consumption_date TEXT NOT NULL,
+                price REAL NOT NULL,
+                total_value REAL NOT NULL,
+                notes TEXT,
+                created_at TEXT NOT NULL,
+                FOREIGN KEY(inventory_id) REFERENCES Inventory(id) ON DELETE CASCADE
+            )
+        """)
         conn.commit()
+        self._apply_migrations()
         self._seed_if_empty()
+
+    def _apply_migrations(self):
+        """Apply schema migrations to existing databases"""
+        conn = self.conn
+        cur = conn.cursor()
+        
+        # Check if price column exists in Inventory table, if not add it
+        cur.execute("PRAGMA table_info(Inventory)")
+        columns = [row[1] for row in cur.fetchall()]
+        
+        if "price" not in columns:
+            cur.execute("ALTER TABLE Inventory ADD COLUMN price REAL NOT NULL DEFAULT 0")
+            conn.commit()
+        
+        if "total_price" not in columns:
+            cur.execute("ALTER TABLE Inventory ADD COLUMN total_price REAL NOT NULL DEFAULT 0")
+            conn.commit()
+        
+        # Check if InventoryConsumption table exists
+        cur.execute("""
+            SELECT name FROM sqlite_master 
+            WHERE type='table' AND name='InventoryConsumption'
+        """)
+        if not cur.fetchone():
+            # Create the InventoryConsumption table if it doesn't exist
+            cur.execute("""
+                CREATE TABLE InventoryConsumption(
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    inventory_id INTEGER NOT NULL,
+                    qty_consumed REAL NOT NULL,
+                    consumption_date TEXT NOT NULL,
+                    price REAL NOT NULL,
+                    total_value REAL NOT NULL,
+                    notes TEXT,
+                    created_at TEXT NOT NULL,
+                    FOREIGN KEY(inventory_id) REFERENCES Inventory(id) ON DELETE CASCADE
+                )
+            """)
+            conn.commit()
 
     def _seed_if_empty(self):
         conn = self.conn
