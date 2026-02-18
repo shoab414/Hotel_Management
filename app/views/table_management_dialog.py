@@ -287,29 +287,47 @@ class TableManagementDialog(QDialog):
         payment_dialog = PaymentDialog(self, total_amount=grand_total)
         if payment_dialog.exec() == QDialog.Accepted:
             payment_method = payment_dialog.payment_method
-            MessageBox.information(self, "Payment Successful",
-                                   f"Payment of ₹{grand_total:.2f} received via {payment_method}. Table {self.get_table_number(self.table_id)} is now available.")
-            self.update_table_status_to_available()
-            self.accept() # Close the dialog after successful payment
+            try:
+                self.update_table_status_to_available(payment_method)
+                MessageBox.information(self, "Payment Successful",
+                                       f"Payment of ₹{grand_total:.2f} received via {payment_method}. Table {self.get_table_number(self.table_id)} is now available.")
+                self.accept() # Close the dialog after successful payment
+            except Exception as e:
+                MessageBox.error(self, "Payment Error", f"Failed to record payment: {e}")
         else:
             MessageBox.information(self, "Payment Cancelled", "Payment process was cancelled.")
 
-    def update_table_status_to_available(self):
+    def update_table_status_to_available(self, payment_method: str):
+        """Record payments for all active orders on this table, mark them paid, and free the table."""
         conn = self.controller.db.connect()
         cur = conn.cursor()
+        gst_rate = 0.05
         try:
-            # Update table status to 'Available'
+            # Find active orders for the table
+            cur.execute("SELECT id FROM Orders WHERE table_id = ? AND status IN ('Open', 'InKitchen', 'Served', 'Pending', 'Preparing', 'Ready')", (self.table_id,))
+            order_rows = cur.fetchall()
+            order_ids = [r['id'] for r in order_rows]
+
+            for oid in order_ids:
+                # Calculate amount for each order
+                cur.execute("SELECT COALESCE(SUM(qty*price),0) AS amt FROM OrderDetails WHERE order_id = ?", (oid,))
+                amt = float(cur.fetchone()["amt"] or 0)
+                gst = round(amt * gst_rate, 2)
+                # Insert payment record
+                cur.execute("INSERT INTO Payments(order_id, amount, gst, method, paid_at) VALUES(?,?,?,?,?)",
+                            (oid, amt, gst, payment_method, datetime.datetime.now().isoformat()))
+                # Mark order paid
+                cur.execute("UPDATE Orders SET status = 'Paid' WHERE id = ?", (oid,))
+
+            # Finally set table available
             cur.execute("UPDATE Tables SET status = ? WHERE id = ?", ("Available", self.table_id))
-            # Update all orders associated with this table to 'Paid'
-            cur.execute("UPDATE Orders SET status = ? WHERE table_id = ?", ("Paid", self.table_id))
             conn.commit()
-            logging.info(f"Table {self.table_id} status updated to 'Available' and all orders marked 'Paid'.")
-            self.controller.hotel_view.refresh_tables() # Notify hotel_view to refresh
+            logging.info(f"Table {self.table_id} status updated to 'Available' and orders marked 'Paid' with payments recorded.")
+            self.controller.hotel_view.refresh_tables()
         except Exception as e:
             conn.rollback()
-            logging.error(f"Failed to update table status or orders for table {self.table_id}: {e}")
+            logging.error(f"Failed to update table status or record payments for table {self.table_id}: {e}", exc_info=True)
             MessageBox.error(self, "Database Error", f"Failed to update table status after payment: {e}")
-        # Removed  to prevent premature closing of the database connection
 
     def mark_table_available(self):
         logging.info(f"mark_table_available called for table_id: {self.table_id}")

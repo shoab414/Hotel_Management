@@ -1,4 +1,4 @@
-from PySide6.QtWidgets import QWidget, QVBoxLayout, QTabWidget, QHBoxLayout, QLabel, QDateEdit, QPushButton
+from PySide6.QtWidgets import QWidget, QVBoxLayout, QTabWidget, QHBoxLayout, QLabel, QDateEdit, QPushButton, QTableWidget, QTableWidgetItem
 from PySide6.QtCore import QDate, Qt
 from PySide6.QtCharts import QChartView, QChart, QBarSeries, QBarSet, QPieSeries, QLineSeries, QValueAxis, QBarCategoryAxis
 import datetime
@@ -59,13 +59,23 @@ class AnalyticsView(QWidget):
         w = QWidget()
         layout = QVBoxLayout(w)
         filter_bar = QHBoxLayout()
+        self.dishes_date = QDateEdit()
+        self.dishes_date.setDate(QDate.currentDate())
+        filter_bar.addWidget(QLabel("Date:"))
+        filter_bar.addWidget(self.dishes_date)
         self.dishes_refresh = QPushButton("Refresh")
         filter_bar.addWidget(QLabel("Most Ordered Dishes"))
         filter_bar.addWidget(self.dishes_refresh)
+        filter_bar.addStretch()
         layout.addLayout(filter_bar)
-        self.dishes_chart = QChartView()
-        layout.addWidget(self.dishes_chart, 1)
+
+        # Table for dishes: Rank, Dish, Times Ordered
+        self.dishes_table = QTableWidget(0, 3)
+        self.dishes_table.setHorizontalHeaderLabels(["Rank", "Dish", "Times Ordered"])
+        layout.addWidget(self.dishes_table, 1)
+
         self.dishes_refresh.clicked.connect(self._refresh_dishes)
+        self.dishes_date.dateChanged.connect(self._refresh_dishes)
         self.tabs.addTab(w, "Dishes")
         self._refresh_dishes()
 
@@ -144,39 +154,32 @@ class AnalyticsView(QWidget):
     def _refresh_dishes(self):
         conn = self.controller.db.connect()
         cur = conn.cursor()
+        # Filter by selected date (per-day counts)
+        sel_date = self.dishes_date.date().toPython()
         cur.execute("""
             SELECT MenuItems.name, SUM(OrderDetails.qty) AS total_qty
             FROM Orders
             JOIN OrderDetails ON OrderDetails.order_id=Orders.id
             JOIN MenuItems ON OrderDetails.item_id=MenuItems.id
-            WHERE Orders.status='Paid'
+            WHERE Orders.status='Paid' AND DATE(Orders.created_at)=DATE(?)
             GROUP BY MenuItems.id, MenuItems.name
             ORDER BY total_qty DESC
-            LIMIT 15
-        """)
+            LIMIT 100
+        """, (sel_date.isoformat(),))
         rows = cur.fetchall()
-        series = QBarSeries()
-        s = QBarSet("Times Ordered")
-        categories = []
-        if rows:
-            for r in rows:
-                s.append(float(r["total_qty"] or 0))
-                categories.append(r["name"])
-        else:
-            s.append(0)
-            categories.append("No data")
-        series.append(s)
-        chart = QChart()
-        chart.addSeries(series)
-        chart.setTitle("Top 15 Most Ordered Dishes")
-        axis_x = QBarCategoryAxis()
-        axis_x.append(categories)
-        axis_y = QValueAxis()
-        axis_y.setRange(0, max([float(r["total_qty"] or 0) for r in rows] + [5]) if rows else 5)
-        chart.addAxis(axis_x, Qt.AlignBottom)
-        chart.addAxis(axis_y, Qt.AlignLeft)
-        series.attachAxis(axis_x)
-        series.attachAxis(axis_y)
-        chart.legend().setVisible(True)
-        chart.legend().setAlignment(Qt.AlignTop)
-        self.dishes_chart.setChart(chart)
+
+        # Populate table
+        self.dishes_table.setRowCount(len(rows))
+        for i, r in enumerate(rows):
+            rank_item = QTableWidgetItem(str(i+1))
+            name_item = QTableWidgetItem(r["name"])
+            times_item = QTableWidgetItem(str(r["total_qty"] or 0))
+            self.dishes_table.setItem(i, 0, rank_item)
+            self.dishes_table.setItem(i, 1, name_item)
+            self.dishes_table.setItem(i, 2, times_item)
+        if not rows:
+            # show a single row with 'No data'
+            self.dishes_table.setRowCount(1)
+            self.dishes_table.setItem(0, 0, QTableWidgetItem("-"))
+            self.dishes_table.setItem(0, 1, QTableWidgetItem("No data for selected date"))
+            self.dishes_table.setItem(0, 2, QTableWidgetItem("0"))

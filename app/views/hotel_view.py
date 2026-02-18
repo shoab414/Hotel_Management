@@ -2,6 +2,7 @@ from PySide6.QtWidgets import QWidget, QVBoxLayout, QHBoxLayout, QPushButton, QT
 from PySide6.QtCore import Qt
 import datetime
 from app.views.table_management_dialog import TableManagementDialog
+from .checkout_dialog import CheckoutDialog
 from app.utils.message import MessageBox
 import logging
 
@@ -69,7 +70,7 @@ class ReservationDialog(QDialog):
         
         self.check_out = QLineEdit()
         self.check_out.setPlaceholderText("YYYY-MM-DD")
-        f.addRow("Check-out *:", self.check_out)
+        f.addRow("Check-out:", self.check_out)
         
         # Buttons
         button_layout = QHBoxLayout()
@@ -360,8 +361,8 @@ class HotelView(QWidget):
             if not room_number:
                 MessageBox.warning(self, "Validation Required", "Please select a room for check-in.")
                 return
-            if not dlg.check_in.text().strip() or not dlg.check_out.text().strip():
-                QMessageBox.warning(self, "Validation", "Check-in and check-out dates are required.")
+            if not dlg.check_in.text().strip():
+                QMessageBox.warning(self, "Validation", "Check-in date is required.")
                 return
             conn = self.controller.db.connect()
             cur = conn.cursor()
@@ -378,8 +379,9 @@ class HotelView(QWidget):
             cur.execute("INSERT INTO Customers(name, phone, email) VALUES(?, ?, ?)", 
                        (customer_name, customer_phone, customer_email))
             cust_id = cur.lastrowid
+            check_out_val = dlg.check_out.text().strip() or None
             cur.execute("INSERT INTO Reservations(customer_id,room_id,check_in,check_out,status) VALUES(?,?,?,?,?)",
-                        (cust_id, room_id, dlg.check_in.text().strip(), dlg.check_out.text().strip(), "Reserved"))
+                        (cust_id, room_id, dlg.check_in.text().strip(), check_out_val, "Reserved"))
             conn.commit()
             self.refresh()
             MessageBox.success(self, "Reservation Created", "Reservation created successfully!")
@@ -536,6 +538,14 @@ class HotelView(QWidget):
                 res_id = int(self.reservations.item(row,0).text())
                 room_number = self.reservations.item(row,4).text()  # Room is at index 4
                 
+                # Ensure reservation has a check_out set (so it isn't treated as a walk-in and hidden)
+                cur.execute("SELECT check_out FROM Reservations WHERE id=?", (res_id,))
+                rrow = cur.fetchone()
+                if rrow and (rrow["check_out"] is None or not str(rrow["check_out"]).strip()):
+                    # set a default planned check_out if missing (tomorrow)
+                    default_co = (datetime.date.today() + datetime.timedelta(days=1)).isoformat()
+                    cur.execute("UPDATE Reservations SET check_out=? WHERE id=?", (default_co, res_id))
+
                 # Update reservation status
                 cur.execute("UPDATE Reservations SET status='CheckedIn' WHERE id=?", (res_id,))
                 
@@ -566,16 +576,11 @@ class HotelView(QWidget):
             for index in selected_rows:
                 row = index.row()
                 res_id = int(self.reservations.item(row,0).text())
-                room_number = self.reservations.item(row,4).text()  # Room is at index 4
-                
-                # Update reservation status to CheckedOut
-                cur.execute("UPDATE Reservations SET status='CheckedOut', check_out=? WHERE id=?", 
-                           (datetime.date.today().isoformat(), res_id))
-                
-                # Set room to Available (not Cleaning) - customer checked out via reservation
-                cur.execute("UPDATE Rooms SET status='Available' WHERE number=?", (room_number,))
-                checked_out_count += 1
-            
+                # Use CheckoutDialog to calculate bill and finalize checkout for each reservation
+                dlg = CheckoutDialog(self, self.controller.db, reservation_id=res_id)
+                if dlg.exec():
+                    checked_out_count += 1
+
             conn.commit()
             self.refresh()
             MessageBox.success(self, "Check-out Successful", f"{checked_out_count} reservation(s) checked out successfully!")
