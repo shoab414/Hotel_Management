@@ -1,5 +1,7 @@
 from PySide6.QtWidgets import QDialog, QVBoxLayout, QHBoxLayout, QLabel, QSpinBox, QPushButton, QListWidget, QListWidgetItem, QLineEdit
 from PySide6.QtCore import Qt
+import logging
+import datetime
 from app.utils.message import MessageBox
 
 class AddOrderDialog(QDialog):
@@ -148,8 +150,9 @@ class AddOrderDialog(QDialog):
         cur = conn.cursor()
         try:
             logging.info(f"Attempting to save order for table_id: {self.table_id} with items: {self.selected_items}")
-            # Create a new order
-            cur.execute("INSERT INTO Orders (table_id, status) VALUES (?, ?)", (self.table_id, "Pending"))
+            # Create a new order (include created_at and use valid status)
+            created_at = datetime.datetime.now().isoformat()
+            cur.execute("INSERT INTO Orders (table_id, status, created_at) VALUES (?, ?, ?)", (self.table_id, "Open", created_at))
             order_id = cur.lastrowid
             logging.info(f"New order created with ID: {order_id}")
 

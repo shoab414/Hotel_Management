@@ -114,10 +114,10 @@ class TableManagementDialog(QDialog):
         self.orders_table.setRowCount(0) # Clear existing rows
         total_amount = 0.0
 
-        # Fetch all active orders for the table
+        # Fetch all active orders for the table (support both legacy and current status names)
         conn = self.controller.db.connect()
         cur = conn.cursor()
-        cur.execute("SELECT id, status FROM Orders WHERE table_id = ? AND status IN ('Pending', 'Preparing', 'Ready')", (self.table_id,))
+        cur.execute("SELECT id, status FROM Orders WHERE table_id = ? AND status IN ('Open', 'InKitchen', 'Served', 'Pending', 'Preparing', 'Ready')", (self.table_id,))
         orders = cur.fetchall()
         logging.info(f"Fetched {len(orders)} active orders for table_id {self.table_id}: {orders}")
 
@@ -180,10 +180,10 @@ class TableManagementDialog(QDialog):
         conn = self.controller.db.connect()
         cur = conn.cursor()
 
-        # Fetch all active orders for this table
+        # Fetch all active orders for this table (use statuses that represent active/unbilled orders)
         cur.execute("""
             SELECT id FROM Orders
-            WHERE table_id = ? AND status NOT IN ('Completed', 'Billed')
+            WHERE table_id = ? AND status IN ('Open', 'InKitchen', 'Served', 'Pending', 'Preparing', 'Ready')
         """, (self.table_id,))
         active_order_ids = [row['id'] for row in cur.fetchall()]
 
@@ -220,9 +220,9 @@ class TableManagementDialog(QDialog):
                               f"Do you want to finalize this bill and mark orders as completed?",
                               detailed_text=detailed_bill_text):
             try:
-                # Update orders status to 'Completed'
+                # Update orders status to 'Paid'
                 for order_id in active_order_ids:
-                    cur.execute("UPDATE Orders SET status = 'Completed' WHERE id = ?", (order_id,))
+                    cur.execute("UPDATE Orders SET status = 'Paid' WHERE id = ?", (order_id,))
                 
                 # Update table status to 'Cleaning'
                 cur.execute("UPDATE Tables SET status = 'Cleaning' WHERE id = ?", (self.table_id,))
@@ -288,7 +288,7 @@ class TableManagementDialog(QDialog):
         if payment_dialog.exec() == QDialog.Accepted:
             payment_method = payment_dialog.payment_method
             MessageBox.information(self, "Payment Successful",
-                                   f"Payment of ₹{grand_total:.2f} received via {payment_method}. Table {self.table_number} is now available.")
+                                   f"Payment of ₹{grand_total:.2f} received via {payment_method}. Table {self.get_table_number(self.table_id)} is now available.")
             self.update_table_status_to_available()
             self.accept() # Close the dialog after successful payment
         else:
@@ -300,10 +300,10 @@ class TableManagementDialog(QDialog):
         try:
             # Update table status to 'Available'
             cur.execute("UPDATE Tables SET status = ? WHERE id = ?", ("Available", self.table_id))
-            # Update all orders associated with this table to 'Completed'
-            cur.execute("UPDATE Orders SET status = ? WHERE table_id = ?", ("Completed", self.table_id))
+            # Update all orders associated with this table to 'Paid'
+            cur.execute("UPDATE Orders SET status = ? WHERE table_id = ?", ("Paid", self.table_id))
             conn.commit()
-            logging.info(f"Table {self.table_id} status updated to 'Available' and all orders marked 'Completed'.")
+            logging.info(f"Table {self.table_id} status updated to 'Available' and all orders marked 'Paid'.")
             self.controller.hotel_view.refresh_tables() # Notify hotel_view to refresh
         except Exception as e:
             conn.rollback()
@@ -322,9 +322,9 @@ class TableManagementDialog(QDialog):
                 # Update table status to 'Available'
                 logging.info(f"Attempting to update Tables status to 'Available' for table_id: {self.table_id}")
                 cur.execute("UPDATE Tables SET status = ? WHERE id = ?", ("Available", self.table_id))
-                # Update all active orders associated with this table to 'Completed'
-                logging.info(f"Attempting to update active Orders status to 'Completed' for table_id: {self.table_id}")
-                cur.execute("UPDATE Orders SET status = ? WHERE table_id = ? AND status NOT IN ('Completed', 'Billed')", ("Completed", self.table_id))
+                # Update all active orders associated with this table to 'Paid'
+                logging.info(f"Attempting to update active Orders status to 'Paid' for table_id: {self.table_id}")
+                cur.execute("UPDATE Orders SET status = ? WHERE table_id = ? AND status IN ('Open', 'InKitchen', 'Served', 'Pending', 'Preparing', 'Ready')", ("Paid", self.table_id))
                 conn.commit()
                 logging.info(f"Table {self.table_id} status updated to 'Available' and active orders marked 'Completed' by manual action.")
                 MessageBox.success(self, "Table Status Updated", f"Table {self.get_table_number(self.table_id)} is now 'Available'.")

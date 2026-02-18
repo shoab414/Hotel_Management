@@ -37,6 +37,11 @@ class MainWindow(QMainWindow):
         self.setCentralWidget(wrap)
         self._build_sidebar()
         self._build_pages()
+        # Expose tables view on the controller for dialogs/windows that expect a `refresh_tables()` method
+        try:
+            self.controller.hotel_view = self.page_tables
+        except Exception:
+            logging.exception("Failed to attach hotel_view (tables) to controller")
 
     def _build_sidebar(self):
         v = QVBoxLayout(self.sidebar)

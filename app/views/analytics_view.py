@@ -1,6 +1,6 @@
 from PySide6.QtWidgets import QWidget, QVBoxLayout, QTabWidget, QHBoxLayout, QLabel, QDateEdit, QPushButton
 from PySide6.QtCore import QDate, Qt
-from PySide6.QtCharts import QChartView, QChart, QBarSeries, QBarSet, QPieSeries, QLineSeries, QValueAxis
+from PySide6.QtCharts import QChartView, QChart, QBarSeries, QBarSet, QPieSeries, QLineSeries, QValueAxis, QBarCategoryAxis
 import datetime
 
 class AnalyticsView(QWidget):
@@ -20,6 +20,7 @@ class AnalyticsView(QWidget):
         self._setup_daily()
         self._setup_weekly()
         self._setup_monthly()
+        self._setup_dishes()
 
     def _setup_daily(self):
         w = QWidget()
@@ -54,22 +55,37 @@ class AnalyticsView(QWidget):
         self.tabs.addTab(w, "Monthly")
         self._refresh_monthly()
 
+    def _setup_dishes(self):
+        w = QWidget()
+        layout = QVBoxLayout(w)
+        filter_bar = QHBoxLayout()
+        self.dishes_refresh = QPushButton("Refresh")
+        filter_bar.addWidget(QLabel("Most Ordered Dishes"))
+        filter_bar.addWidget(self.dishes_refresh)
+        layout.addLayout(filter_bar)
+        self.dishes_chart = QChartView()
+        layout.addWidget(self.dishes_chart, 1)
+        self.dishes_refresh.clicked.connect(self._refresh_dishes)
+        self.tabs.addTab(w, "Dishes")
+        self._refresh_dishes()
+
     def _refresh_daily(self):
         date = self.daily_date.date().toPython()
         conn = self.controller.db.connect()
         cur = conn.cursor()
         cur.execute("""
             SELECT MenuItems.category AS cat, SUM(OrderDetails.qty*OrderDetails.price) AS amt
-            FROM Payments 
-            JOIN Orders ON Payments.order_id=Orders.id
+            FROM Orders
             JOIN OrderDetails ON OrderDetails.order_id=Orders.id
             JOIN MenuItems ON OrderDetails.item_id=MenuItems.id
-            WHERE DATE(Payments.paid_at)=DATE(?)
+            WHERE Orders.status='Paid' AND DATE(Orders.created_at)=DATE(?)
             GROUP BY cat
         """, (date.isoformat(),))
         series = QPieSeries()
-        for r in cur.fetchall():
-            series.append(r["cat"], float(r["amt"] or 0))
+        rows = cur.fetchall()
+        if rows:
+            for r in rows:
+                series.append(r["cat"] or "Uncategorized", float(r["amt"] or 0))
         chart = QChart()
         chart.addSeries(series)
         chart.setTitle("Category-wise revenue")
@@ -105,9 +121,10 @@ class AnalyticsView(QWidget):
         series = QLineSeries()
         for d in range(1, 31):
             cur.execute("""
-                SELECT COALESCE(SUM(amount+gst),0) AS s 
-                FROM Payments 
-                WHERE strftime('%Y-%m',paid_at)=strftime('%Y-%m','now') AND CAST(strftime('%d',paid_at) AS INTEGER)=?
+                SELECT COALESCE(SUM(OrderDetails.qty*OrderDetails.price),0) AS s 
+                FROM Orders
+                JOIN OrderDetails ON OrderDetails.order_id=Orders.id
+                WHERE Orders.status='Paid' AND strftime('%Y-%m',Orders.created_at)=strftime('%Y-%m','now') AND CAST(strftime('%d',Orders.created_at) AS INTEGER)=?
             """, (d,))
             val = cur.fetchone()["s"] or 0
             series.append(d, float(val))
@@ -123,3 +140,43 @@ class AnalyticsView(QWidget):
         series.attachAxis(axis_x)
         series.attachAxis(axis_y)
         self.monthly_chart.setChart(chart)
+
+    def _refresh_dishes(self):
+        conn = self.controller.db.connect()
+        cur = conn.cursor()
+        cur.execute("""
+            SELECT MenuItems.name, SUM(OrderDetails.qty) AS total_qty
+            FROM Orders
+            JOIN OrderDetails ON OrderDetails.order_id=Orders.id
+            JOIN MenuItems ON OrderDetails.item_id=MenuItems.id
+            WHERE Orders.status='Paid'
+            GROUP BY MenuItems.id, MenuItems.name
+            ORDER BY total_qty DESC
+            LIMIT 15
+        """)
+        rows = cur.fetchall()
+        series = QBarSeries()
+        s = QBarSet("Times Ordered")
+        categories = []
+        if rows:
+            for r in rows:
+                s.append(float(r["total_qty"] or 0))
+                categories.append(r["name"])
+        else:
+            s.append(0)
+            categories.append("No data")
+        series.append(s)
+        chart = QChart()
+        chart.addSeries(series)
+        chart.setTitle("Top 15 Most Ordered Dishes")
+        axis_x = QBarCategoryAxis()
+        axis_x.append(categories)
+        axis_y = QValueAxis()
+        axis_y.setRange(0, max([float(r["total_qty"] or 0) for r in rows] + [5]) if rows else 5)
+        chart.addAxis(axis_x, Qt.AlignBottom)
+        chart.addAxis(axis_y, Qt.AlignLeft)
+        series.attachAxis(axis_x)
+        series.attachAxis(axis_y)
+        chart.legend().setVisible(True)
+        chart.legend().setAlignment(Qt.AlignTop)
+        self.dishes_chart.setChart(chart)

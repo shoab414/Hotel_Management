@@ -42,37 +42,10 @@ class CustomerCheckinDialog(QDialog):
     def _load_available_rooms(self):
         conn = self.db.connect()
         cur = conn.cursor()
-        cur.execute("SELECT number, category, rate FROM Rooms WHERE status='Available' ORDER BY number")
+        cur.execute("SELECT id, number, category, rate FROM Rooms WHERE status='Available' ORDER BY number")
         self.room.clear()
         for r in cur.fetchall():
-            self.room.addItem(f"{r['number']} ({r['category']} - ₹{r['rate']:.0f})", r["number"])
-
-class CustomerCheckinDialog(QDialog):
-    def __init__(self, parent=None, db=None):
-        super().__init__(parent)
-        self.setWindowTitle("Customer Check-in")
-        self.db = db
-        f = QFormLayout(self)
-        self.room = QComboBox()
-        self.room.setMinimumWidth(200)
-        self.check_in = QLineEdit()
-        self.check_out = QLineEdit()
-        ok = QPushButton("Check-in")
-        ok.clicked.connect(self.accept)
-        f.addRow("Room", self.room)
-        f.addRow("Check-in (YYYY-MM-DD)", self.check_in)
-        f.addRow("Planned Check-out (YYYY-MM-DD)", self.check_out)
-        f.addRow(ok)
-        if db:
-            self._load_available_rooms()
-
-    def _load_available_rooms(self):
-        conn = self.db.connect()
-        cur = conn.cursor()
-        cur.execute("SELECT number, category, rate FROM Rooms WHERE status='Available' ORDER BY number")
-        self.room.clear()
-        for r in cur.fetchall():
-            self.room.addItem(f"{r['number']} ({r['category']} - ₹{r['rate']:.0f})", r["number"])
+            self.room.addItem(f"{r['number']} ({r['category']} - ₹{r['rate']:.0f})", r["id"])
 
 class AddCustomerOrderDialog(QDialog):
     def __init__(self, parent=None, db=None):
@@ -234,7 +207,7 @@ class GuestView(QWidget):
         self.refresh_customers()
 
     def refresh_customers(self):
-        """Show only active guests (Reserved/CheckedIn) or customers with no reservations. Hide checked-out."""
+        """Show only currently checked-in guests. Hide reserved and checked-out."""
         term = self.customer_search.text().strip()
         conn = self.controller.db.connect()
         cur = conn.cursor()
@@ -244,12 +217,9 @@ class GuestView(QWidget):
                 SELECT c.id AS id, c.name AS name, c.phone AS phone, c.email AS email,
                        r.room_id AS room_id, rm.number AS current_room, r.status AS res_status
                 FROM Customers c
-                LEFT JOIN Reservations r ON r.id = (
-                    SELECT id FROM Reservations WHERE customer_id=c.id AND status IN ('Reserved','CheckedIn') ORDER BY id DESC LIMIT 1
-                )
+                INNER JOIN Reservations r ON r.customer_id=c.id AND r.status='CheckedIn'
                 LEFT JOIN Rooms rm ON rm.id = r.room_id
                 WHERE (c.name LIKE ? OR c.phone LIKE ? OR c.email LIKE ?)
-                AND (r.id IS NOT NULL OR c.id NOT IN (SELECT customer_id FROM Reservations))
                 ORDER BY c.id DESC
             """, (like, like, like))
         else:
@@ -257,11 +227,8 @@ class GuestView(QWidget):
                 SELECT c.id AS id, c.name AS name, c.phone AS phone, c.email AS email,
                        r.room_id AS room_id, rm.number AS current_room, r.status AS res_status
                 FROM Customers c
-                LEFT JOIN Reservations r ON r.id = (
-                    SELECT id FROM Reservations WHERE customer_id=c.id AND status IN ('Reserved','CheckedIn') ORDER BY id DESC LIMIT 1
-                )
+                INNER JOIN Reservations r ON r.customer_id=c.id AND r.status='CheckedIn'
                 LEFT JOIN Rooms rm ON rm.id = r.room_id
-                WHERE r.id IS NOT NULL OR c.id NOT IN (SELECT customer_id FROM Reservations)
                 ORDER BY c.id DESC
             """)
         rows = cur.fetchall()
@@ -285,15 +252,14 @@ class GuestView(QWidget):
         cur.execute("""
             SELECT
                 o.id AS order_id,
-                o.order_date,
+                o.created_at AS order_date,
                 o.status,
-                SUM(oi.quantity * mi.price) AS total_amount
+                SUM(od.qty * od.price) AS total_amount
             FROM Orders o
-            JOIN OrderItems oi ON o.id = oi.order_id
-            JOIN MenuItems mi ON oi.menu_item_id = mi.id
+            JOIN OrderDetails od ON o.id = od.order_id
             WHERE o.customer_id = ?
-            GROUP BY o.id, o.order_date, o.status
-            ORDER BY o.order_date DESC, o.id DESC
+            GROUP BY o.id, o.created_at, o.status
+            ORDER BY o.created_at DESC, o.id DESC
         """, (customer_id,))
         orders = cur.fetchall()
 
@@ -306,10 +272,10 @@ class GuestView(QWidget):
 
             # Fetch and display order items for each order
             cur.execute("""
-                SELECT mi.name, oi.quantity
-                FROM OrderItems oi
-                JOIN MenuItems mi ON oi.menu_item_id = mi.id
-                WHERE oi.order_id = ?
+                SELECT mi.name, od.qty AS quantity
+                FROM OrderDetails od
+                JOIN MenuItems mi ON od.item_id = mi.id
+                WHERE od.order_id = ?
             """, (order["order_id"],))
             items = cur.fetchall()
             item_details = ", ".join([f"{item['name']} x{item['quantity']}" for item in items])
@@ -406,13 +372,13 @@ class GuestView(QWidget):
         dlg.check_in.setText(datetime.date.today().isoformat())
         dlg.check_out.setText((datetime.date.today() + datetime.timedelta(days=1)).isoformat())
         if dlg.exec():
-            room_number = dlg.room.currentData()
-            if not room_number:
+            room_id = dlg.room.currentData()
+            if not room_id:
                 QMessageBox.warning(self, "Validation", "Please select a room.")
                 return
             conn = self.controller.db.connect()
             cur = conn.cursor()
-            cur.execute("SELECT id, status FROM Rooms WHERE number=?", (str(room_number),))
+            cur.execute("SELECT id, status FROM Rooms WHERE id=?", (room_id,))
             room_row = cur.fetchone()
             if not room_row:
                 QMessageBox.warning(self, "Error", "Room not found.")
@@ -420,13 +386,13 @@ class GuestView(QWidget):
             if room_row["status"] != "Available":
                 MessageBox.warning(self, "Room Unavailable", "Selected room is not available.")
                 return
-            room_id = room_row["id"]
             cur.execute("INSERT INTO Reservations(customer_id,room_id,check_in,check_out,status) VALUES(?,?,?,?,?)",
                         (cust_id, room_id, dlg.check_in.text(), dlg.check_out.text(), "CheckedIn"))
             cur.execute("UPDATE Rooms SET status='Occupied' WHERE id=?", (room_id,))
             conn.commit()
             self.refresh_customers() # Refresh customer list after check-in
             MessageBox.success(self, "Check-in Successful", "Customer checked in successfully!")
+            self.refresh_customer_orders(cust_id) # Also refresh orders for the checked-in customer
 
     def customer_check_out(self):
         row = self.customers.currentRow()
@@ -442,9 +408,10 @@ class GuestView(QWidget):
             MessageBox.warning(self, "No Active Stay", "No active stay found for this customer.")
             return
         cur.execute("UPDATE Reservations SET status='CheckedOut', check_out=? WHERE id=?", (datetime.date.today().isoformat(), res["id"]))
-        cur.execute("UPDATE Rooms SET status='Cleaning' WHERE id=?", (res["room_id"],))
+        cur.execute("UPDATE Rooms SET status='Available' WHERE id=?", (res["room_id"],))
         conn.commit()
         self.refresh_customers()
+        MessageBox.success(self, "Check-out Successful", "Customer checked out successfully!")
         # self.refresh_rooms() # This would be handled by a RoomView if it existed
 
     def add_customer_order(self):
@@ -472,8 +439,11 @@ class GuestView(QWidget):
 
                 # Insert order items
                 for item_id, quantity in order_details.items():
-                    cur.execute("INSERT INTO OrderItems (order_id, menu_item_id, quantity) VALUES (?, ?, ?)",
-                                (order_id, item_id, quantity))
+                    # Get the price of the menu item
+                    cur.execute("SELECT price FROM MenuItems WHERE id = ?", (item_id,))
+                    item_price = cur.fetchone()["price"]
+                    cur.execute("INSERT INTO OrderDetails (order_id, item_id, qty, price, kitchen_status) VALUES (?, ?, ?, ?, ?)",
+                                (order_id, item_id, quantity, item_price, "Pending"))
                 conn.commit()
                 MessageBox.success(self, "Order Placed", f"Order for {cust_name} placed successfully!")
                 self.refresh_customer_orders(cust_id) # Refresh orders after placing a new one

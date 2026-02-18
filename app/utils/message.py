@@ -44,6 +44,12 @@ class MessageBox:
         
         return msg.exec()
 
+    # Backwards-compatible alias for info()
+    @staticmethod
+    def information(parent, title, message, detailed_text=None):
+        """Alias for info() to match existing usages."""
+        return MessageBox.info(parent, title, message, detailed_text)
+
     @staticmethod
     def warning(parent, title, message, detailed_text=None):
         """Show a styled warning message"""
@@ -123,6 +129,12 @@ class MessageBox:
         msg.addButton(ok_button, QMessageBox.AcceptRole)
         
         return msg.exec()
+
+    # Backwards-compatible alias for error()
+    @staticmethod
+    def critical(parent, title, message, detailed_text=None):
+        """Alias for error() to match existing usages."""
+        return MessageBox.error(parent, title, message, detailed_text)
 
     @staticmethod
     def success(parent, title, message, detailed_text=None):
@@ -212,4 +224,15 @@ class MessageBox:
         msg.addButton(confirm_btn, QMessageBox.AcceptRole)
         msg.addButton(cancel_btn, QMessageBox.RejectRole)
         
-        return msg.exec() == QMessageBox.AcceptRole
+        msg.exec()
+        return msg.clickedButton() == confirm_btn
+
+    # Convenience wrapper to mimic QMessageBox.question API
+    @staticmethod
+    def question(parent, title, message, confirm_text="Yes", cancel_text="No"):
+        """
+        Show a styled question dialog.
+        Returns QMessageBox.Yes or QMessageBox.No for compatibility with existing code.
+        """
+        accepted = MessageBox.confirm(parent, title, message, confirm_text, cancel_text)
+        return QMessageBox.Yes if accepted else QMessageBox.No
