@@ -26,6 +26,7 @@ class CustomerCheckinDialog(QDialog):
         super().__init__(parent)
         self.setWindowTitle("Customer Check-in")
         self.db = db
+        self.all_rooms_occupied = False
         f = QFormLayout(self)
         self.room = QComboBox()
         self.room.setMinimumWidth(200)
@@ -48,8 +49,10 @@ class CustomerCheckinDialog(QDialog):
         rows = cur.fetchall()
         if not rows:
             # No rooms available - provide an explicit waitlist/no-room option
-            self.room.addItem("No room available (Waitlist)", None)
+            self.room.addItem("❌ No Room Available", None)
+            self.all_rooms_occupied = True
             return
+        self.all_rooms_occupied = False
         for r in rows:
             self.room.addItem(f"{r['number']} ({r['category']} - ₹{r['rate']:.0f})", r["id"])
 
@@ -370,6 +373,14 @@ class GuestView(QWidget):
         cust_id = int(self.customers.item(row,0).text())
         dlg = CustomerCheckinDialog(self, self.controller.db)
         dlg.check_in.setText(datetime.date.today().isoformat())
+        
+        # Check if all rooms are occupied
+        if dlg.all_rooms_occupied:
+            MessageBox.warning(self, "No Room Available", 
+                              "All rooms are currently occupied.\nNo rooms available for check-in.\n\n" +
+                              "Please try again later or contact management.")
+            return
+        
         if dlg.exec():
             room_id = dlg.room.currentData()
             # Allow check-in without assigning a room (waitlist) when room_id is None

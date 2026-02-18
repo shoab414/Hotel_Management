@@ -89,10 +89,19 @@ class ReservationDialog(QDialog):
     def _load_rooms(self):
         conn = self.db.connect()
         cur = conn.cursor()
-        cur.execute("SELECT number, category, status, rate FROM Rooms ORDER BY number")
+        # Load only available rooms by default, but show status indicator
+        cur.execute("SELECT number, category, status, rate FROM Rooms ORDER BY status DESC, number")
         self.room.clear()
+        available_count = 0
         for r in cur.fetchall():
-            self.room.addItem(f"{r['number']} ({r['category']} - ₹{r['rate']:.0f}) [{r['status']}]", r["number"])
+            status_indicator = "✓" if r['status'] == "Available" else "✗"
+            self.room.addItem(f"{status_indicator} {r['number']} ({r['category']} - ₹{r['rate']:.0f}) [{r['status']}]", r["number"])
+            if r['status'] == "Available":
+                available_count += 1
+        
+        # If no rooms available, add warning option
+        if available_count == 0:
+            self.room.insertItem(0, "⚠ No Room Available", None)
     
     def set_room(self, room_number):
         """Set the selected room by room number"""
@@ -358,19 +367,37 @@ class HotelView(QWidget):
             room_number = dlg.room.currentData()
             if not room_number and dlg.room.count() > 0:
                 room_number = dlg.room.currentText().split()[0] if dlg.room.currentText() else None
-            if not room_number:
-                MessageBox.warning(self, "Validation Required", "Please select a room for check-in.")
+            
+            # Check if no room is selected or "No Room Available" option selected
+            if not room_number or room_number == "⚠":
+                conn = self.controller.db.connect()
+                cur = conn.cursor()
+                cur.execute("SELECT COUNT(*) as count FROM Rooms WHERE status='Available'")
+                result = cur.fetchone()
+                available_rooms = result['count'] if result else 0
+                if available_rooms == 0:
+                    MessageBox.warning(self, "No Room Available", "All rooms are currently occupied.\nPlease try again later.")
+                else:
+                    MessageBox.warning(self, "Validation Required", "Please select a room for reservation.")
                 return
+            
             if not dlg.check_in.text().strip():
                 QMessageBox.warning(self, "Validation", "Check-in date is required.")
                 return
             conn = self.controller.db.connect()
             cur = conn.cursor()
-            cur.execute("SELECT id FROM Rooms WHERE number=?", (str(room_number),))
+            cur.execute("SELECT id, status FROM Rooms WHERE number=?", (str(room_number),))
             room_row = cur.fetchone()
             if not room_row:
                 MessageBox.error(self, "Room Error", "Selected room not found.")
                 return
+            
+            # Validate room is available before creating reservation
+            if room_row["status"] != "Available":
+                MessageBox.warning(self, "Room Not Available", 
+                                 f"Room {room_number} is currently {room_row['status']}.\nPlease select another room.")
+                return
+            
             room_id = room_row["id"]
             # Create customer with details
             customer_name = dlg.customer.text().strip()
