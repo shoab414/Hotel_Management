@@ -1,14 +1,122 @@
-from PySide6.QtWidgets import QDialog, QVBoxLayout, QHBoxLayout, QLabel, QPushButton, QTableWidget, QTableWidgetItem, QHeaderView, QFormLayout, QMessageBox
+from PySide6.QtWidgets import QDialog, QVBoxLayout, QHBoxLayout, QLabel, QPushButton, QTableWidget, QTableWidgetItem, QHeaderView, QFormLayout, QMessageBox, QTextEdit, QScrollArea, QWidget
 from PySide6.QtCore import Qt
-from PySide6.QtGui import QTextDocument
+from PySide6.QtGui import QTextDocument, QFont
 from PySide6.QtPrintSupport import QPrinter
 from app.utils.message import MessageBox
 from app.views.payment_dialog import PaymentDialog
 import datetime
 import os
 import logging
-from app.utils.message import MessageBox
 from app.views.add_order_dialog import AddOrderDialog
+
+
+class BillPreviewDialog(QDialog):
+    """Dialog to display a formatted bill preview before payment."""
+    
+    def __init__(self, parent=None, table_number="", items_data=None, subtotal=0.0, gst_amount=0.0, grand_total=0.0):
+        super().__init__(parent)
+        self.setWindowTitle(f"Bill Preview - Table {table_number}")
+        self.setMinimumWidth(500)
+        self.setMinimumHeight(400)
+        
+        layout = QVBoxLayout(self)
+        
+        # Create bill display area
+        bill_text = QTextEdit()
+        bill_text.setReadOnly(True)
+        
+        # Format bill content
+        bill_html = f"""
+        <html>
+        <head>
+            <style>
+                body {{ font-family: Arial, sans-serif; margin: 20px; }}
+                .header {{ text-align: center; font-size: 20px; font-weight: bold; margin-bottom: 20px; }}
+                .table-num {{ text-align: center; font-size: 14px; margin-bottom: 20px; }}
+                .bill-table {{ width: 100%; border-collapse: collapse; margin: 15px 0; }}
+                .bill-table th {{ background-color: #f0f0f0; padding: 10px; text-align: left; border-bottom: 2px solid #333; }}
+                .bill-table td {{ padding: 8px; border-bottom: 1px solid #ddd; }}
+                .bill-table tr:last-child td {{ border-bottom: 2px solid #333; }}
+                .item-name {{ font-weight: 500; }}
+                .qty-price {{ text-align: right; }}
+                .total-row {{ font-weight: bold; text-align: right; }}
+                .summary {{ margin-top: 20px; font-size: 14px; }}
+                .summary-line {{ display: flex; justify-content: space-between; margin: 8px 0; }}
+                .summary-line.total {{ font-size: 16px; font-weight: bold; background-color: #f9f9f9; padding: 8px; border: 1px solid #ddd; }}
+                .footer {{ text-align: center; margin-top: 30px; font-size: 12px; color: #666; }}
+            </style>
+        </head>
+        <body>
+            <div class="header">🧾 RESTAURANT BILL</div>
+            <div class="table-num">Table #{table_number}</div>
+            <div class="table-num" style="font-size: 12px; color: #666;">{datetime.datetime.now().strftime('%d/%m/%Y %H:%M')}</div>
+            
+            <table class="bill-table">
+                <thead>
+                    <tr>
+                        <th>Item</th>
+                        <th style="text-align: center; width: 60px;">Qty</th>
+                        <th style="text-align: right; width: 80px;">Price</th>
+                        <th style="text-align: right; width: 100px;">Total</th>
+                    </tr>
+                </thead>
+                <tbody>
+        """
+        
+        if items_data:
+            for item_name, qty, price, item_total in items_data:
+                bill_html += f"""
+                    <tr>
+                        <td class="item-name">{item_name}</td>
+                        <td style="text-align: center;">{qty}</td>
+                        <td class="qty-price">₹{price:.2f}</td>
+                        <td class="qty-price">₹{item_total:.2f}</td>
+                    </tr>
+                """
+        
+        bill_html += f"""
+                </tbody>
+            </table>
+            
+            <div class="summary">
+                <div class="summary-line">
+                    <span>Subtotal:</span>
+                    <span>₹{subtotal:.2f}</span>
+                </div>
+                <div class="summary-line">
+                    <span>GST (5%):</span>
+                    <span>₹{gst_amount:.2f}</span>
+                </div>
+                <div class="summary-line total">
+                    <span>GRAND TOTAL:</span>
+                    <span>₹{grand_total:.2f}</span>
+                </div>
+            </div>
+            
+            <div class="footer">
+                <p>Thank you for your visit!</p>
+                <p>Please proceed to payment counter</p>
+            </div>
+        </body>
+        </html>
+        """
+        
+        bill_text.setHtml(bill_html)
+        layout.addWidget(bill_text)
+        
+        # Buttons
+        button_layout = QHBoxLayout()
+        continue_btn = QPushButton("Continue to Payment")
+        continue_btn.setObjectName("PrimaryButton")
+        continue_btn.clicked.connect(self.accept)
+        
+        cancel_btn = QPushButton("Cancel")
+        cancel_btn.clicked.connect(self.reject)
+        
+        button_layout.addStretch()
+        button_layout.addWidget(continue_btn)
+        button_layout.addWidget(cancel_btn)
+        layout.addLayout(button_layout)
 
 class TableManagementDialog(QDialog):
     def __init__(self, table_id, controller, parent=None):
@@ -191,9 +299,9 @@ class TableManagementDialog(QDialog):
             MessageBox.info(self, "No Orders", "No active orders to checkout for this table.")
             return
 
-        # Generate bill details
+        # Collect all bill items for preview
+        all_items = []
         total_bill = 0
-        bill_details = []
 
         for order_id in active_order_ids:
             cur.execute("""
@@ -204,31 +312,28 @@ class TableManagementDialog(QDialog):
             """, (order_id,))
             items = cur.fetchall()
             
-            order_total = 0
-            order_items_details = []
             for item in items:
                 item_cost = item['qty'] * item['price']
-                order_total += item_cost
-                order_items_details.append(f"{item['qty']}x {item['name']} (@₹{item['price']:.2f} each) = ₹{item_cost:.2f}")
-            
-            total_bill += order_total
-            bill_details.append(f"Order ID: {order_id} (Total: ₹{order_total:.2f})\n  " + "\n  ".join(order_items_details))
+                all_items.append((item['name'], item['qty'], item['price'], item_cost))
+                total_bill += item_cost
 
-        detailed_bill_text = "\n\n".join(bill_details)
-        
-        # Show bill confirmation
-        if not MessageBox.confirm(self, "Confirm Checkout", 
-                                  f"Total Bill for Table {self.get_table_number(self.table_id)}: ₹{total_bill:.2f}\n\n"
-                                  f"Do you want to proceed with payment?",
-                                  confirm_text="Proceed to Payment",
-                                  cancel_text="Cancel",
-                                  detailed_text=detailed_bill_text):
-            return
-
-        # Calculate grand total with GST
+        # Calculate GST and grand total
         gst_rate = 0.05
         gst_amount = total_bill * gst_rate
         grand_total = total_bill + gst_amount
+
+        # Show bill preview dialog
+        bill_preview = BillPreviewDialog(
+            parent=self,
+            table_number=self.get_table_number(self.table_id),
+            items_data=all_items,
+            subtotal=total_bill,
+            gst_amount=gst_amount,
+            grand_total=grand_total
+        )
+        
+        if bill_preview.exec() != QDialog.Accepted:
+            return
 
         # Show payment dialog
         payment_dialog = PaymentDialog(self, total_amount=grand_total)
