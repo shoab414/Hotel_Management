@@ -1,12 +1,67 @@
-from PySide6.QtWidgets import QMessageBox, QPushButton
-from PySide6.QtGui import QIcon, QPixmap
+"""
+Message box utility module providing styled dialogs for the hotel management system.
+
+This module provides a MessageBox class with static methods for displaying
+styled information, warning, error, success, and confirmation dialogs with
+consistent branding and user experience.
+"""
+from typing import Optional
+from PySide6.QtWidgets import QMessageBox, QPushButton, QWidget
 from PySide6.QtCore import Qt
-import os
+
 
 class MessageBox:
+    """Provides styled message dialogs with consistent branding.
+    
+    All methods are static and return the dialog execution result. Message boxes
+    are themed with Hotel Management System colors and styling."""
     @staticmethod
-    def info(parent, title, message, detailed_text=None):
-        """Show a styled information message"""
+    def _create_base_stylesheet(button_color: str, hover_color: str) -> str:
+        """Create base stylesheet for message box with given button colors.
+        
+        Args:
+            button_color: Main button background color (hex format).
+            hover_color: Button hover state background color (hex format).
+            
+        Returns:
+            Complete QSS stylesheet string for message box.
+        """
+        return f"""
+            QMessageBox {{
+                background-color: #FFFFFF;
+                border: 1px solid #E5E7EB;
+                border-radius: 8px;
+            }}
+            QMessageBox QLabel#qt_msgbox_label {{
+                color: #374151;
+            }}
+            QMessageBox QPushButton {{
+                background-color: {button_color};
+                color: white;
+                border: none;
+                padding: 8px 16px;
+                border-radius: 6px;
+                min-width: 80px;
+            }}
+            QMessageBox QPushButton:hover {{
+                background-color: {hover_color};
+            }}
+        """
+
+    @staticmethod
+    def info(parent: QWidget, title: str, message: str, 
+             detailed_text: Optional[str] = None) -> int:
+        """Show a styled information message dialog.
+        
+        Args:
+            parent: Parent widget for the dialog.
+            title: Dialog title and header text.
+            message: Main message text displayed to user.
+            detailed_text: Optional detailed text for expandable details section.
+            
+        Returns:
+            Dialog execution result code.
+        """
         msg = QMessageBox(parent)
         msg.setIcon(QMessageBox.Information)
         msg.setWindowTitle(title)
@@ -16,27 +71,7 @@ class MessageBox:
         if detailed_text:
             msg.setDetailedText(detailed_text)
         
-        msg.setStyleSheet("""
-            QMessageBox {
-                background-color: #FFFFFF;
-                border: 1px solid #E5E7EB;
-                border-radius: 8px;
-            }
-            QMessageBox QLabel#qt_msgbox_label {
-                color: #374151;
-            }
-            QMessageBox QPushButton {
-                background-color: #2563EB;
-                color: white;
-                border: none;
-                padding: 8px 16px;
-                border-radius: 6px;
-                min-width: 80px;
-            }
-            QMessageBox QPushButton:hover {
-                background-color: #1D4ED8;
-            }
-        """)
+        msg.setStyleSheet(MessageBox._create_base_stylesheet("#2563EB", "#1D4ED8"))
         
         ok_button = QPushButton("OK")
         ok_button.setCursor(Qt.PointingHandCursor)
@@ -51,8 +86,19 @@ class MessageBox:
         return MessageBox.info(parent, title, message, detailed_text)
 
     @staticmethod
-    def warning(parent, title, message, detailed_text=None):
-        """Show a styled warning message"""
+    def warning(parent: QWidget, title: str, message: str, 
+                detailed_text: Optional[str] = None) -> int:
+        """Show a styled warning message dialog.
+        
+        Args:
+            parent: Parent widget for the dialog.
+            title: Dialog title and header text.
+            message: Main warning message displayed to user.
+            detailed_text: Optional detailed text for expandable details section.
+            
+        Returns:
+            Dialog execution result code.
+        """
         msg = QMessageBox(parent)
         msg.setIcon(QMessageBox.Warning)
         msg.setWindowTitle(title)
@@ -62,27 +108,7 @@ class MessageBox:
         if detailed_text:
             msg.setDetailedText(detailed_text)
         
-        msg.setStyleSheet("""
-            QMessageBox {
-                background-color: #FFFFFF;
-                border: 1px solid #E5E7EB;
-                border-radius: 8px;
-            }
-            QMessageBox QLabel#qt_msgbox_label {
-                color: #374151;
-            }
-            QMessageBox QPushButton {
-                background-color: #D97706;
-                color: white;
-                border: none;
-                padding: 8px 16px;
-                border-radius: 6px;
-                min-width: 80px;
-            }
-            QMessageBox QPushButton:hover {
-                background-color: #B45309;
-            }
-        """)
+        msg.setStyleSheet(MessageBox._create_base_stylesheet("#D97706", "#B45309"))
         
         ok_button = QPushButton("OK")
         ok_button.setCursor(Qt.PointingHandCursor)
@@ -91,8 +117,19 @@ class MessageBox:
         return msg.exec()
 
     @staticmethod
-    def error(parent, title, message, detailed_text=None):
-        """Show a styled error message"""
+    def error(parent: QWidget, title: str, message: str, 
+              detailed_text: Optional[str] = None) -> int:
+        """Show a styled error message dialog.
+        
+        Args:
+            parent: Parent widget for the dialog.
+            title: Dialog title and header text.
+            message: Main error message displayed to user.
+            detailed_text: Optional detailed text for expandable details section.
+            
+        Returns:
+            Dialog execution result code.
+        """
         msg = QMessageBox(parent)
         msg.setIcon(QMessageBox.Critical)
         msg.setWindowTitle(title)
@@ -102,27 +139,7 @@ class MessageBox:
         if detailed_text:
             msg.setDetailedText(detailed_text)
         
-        msg.setStyleSheet("""
-            QMessageBox {
-                background-color: #FFFFFF;
-                border: 1px solid #E5E7EB;
-                border-radius: 8px;
-            }
-            QMessageBox QLabel#qt_msgbox_label {
-                color: #374151;
-            }
-            QMessageBox QPushButton {
-                background-color: #DC2626;
-                color: white;
-                border: none;
-                padding: 8px 16px;
-                border-radius: 6px;
-                min-width: 80px;
-            }
-            QMessageBox QPushButton:hover {
-                background-color: #B91C1C;
-            }
-        """)
+        msg.setStyleSheet(MessageBox._create_base_stylesheet("#DC2626", "#B91C1C"))
         
         ok_button = QPushButton("OK")
         ok_button.setCursor(Qt.PointingHandCursor)
@@ -137,8 +154,19 @@ class MessageBox:
         return MessageBox.error(parent, title, message, detailed_text)
 
     @staticmethod
-    def success(parent, title, message, detailed_text=None):
-        """Show a styled success message"""
+    def success(parent: QWidget, title: str, message: str, 
+                detailed_text: Optional[str] = None) -> int:
+        """Show a styled success message dialog.
+        
+        Args:
+            parent: Parent widget for the dialog.
+            title: Dialog title and header text.
+            message: Main success message displayed to user.
+            detailed_text: Optional detailed text for expandable details section.
+            
+        Returns:
+            Dialog execution result code.
+        """
         msg = QMessageBox(parent)
         msg.setIcon(QMessageBox.Information)
         msg.setWindowTitle(title)
@@ -148,27 +176,7 @@ class MessageBox:
         if detailed_text:
             msg.setDetailedText(detailed_text)
         
-        msg.setStyleSheet("""
-            QMessageBox {
-                background-color: #FFFFFF;
-                border: 1px solid #E5E7EB;
-                border-radius: 8px;
-            }
-            QMessageBox QLabel#qt_msgbox_label {
-                color: #374151;
-            }
-            QMessageBox QPushButton {
-                background-color: #059669;
-                color: white;
-                border: none;
-                padding: 8px 16px;
-                border-radius: 6px;
-                min-width: 80px;
-            }
-            QMessageBox QPushButton:hover {
-                background-color: #047857;
-            }
-        """)
+        msg.setStyleSheet(MessageBox._create_base_stylesheet("#059669", "#047857"))
         
         ok_button = QPushButton("OK")
         ok_button.setCursor(Qt.PointingHandCursor)
@@ -177,8 +185,20 @@ class MessageBox:
         return msg.exec()
 
     @staticmethod
-    def confirm(parent, title, message, confirm_text="Confirm", cancel_text="Cancel"):
-        """Show a styled confirmation dialog"""
+    def confirm(parent: QWidget, title: str, message: str, 
+                confirm_text: str = "Confirm", cancel_text: str = "Cancel") -> bool:
+        """Show a styled confirmation dialog with custom button labels.
+        
+        Args:
+            parent: Parent widget for the dialog.
+            title: Dialog title and header text.
+            message: Main message asking for user confirmation.
+            confirm_text: Label text for the confirmation button (default: "Confirm").
+            cancel_text: Label text for the cancel button (default: "Cancel").
+            
+        Returns:
+            True if user clicked confirm button, False if cancelled.
+        """
         msg = QMessageBox(parent)
         msg.setIcon(QMessageBox.Question)
         msg.setWindowTitle(title)
