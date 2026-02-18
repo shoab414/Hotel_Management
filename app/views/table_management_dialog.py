@@ -81,12 +81,10 @@ class TableManagementDialog(QDialog):
         # Grouping payment/bill buttons
         payment_buttons_layout = QHBoxLayout()
         payment_buttons_layout.setSpacing(10)
-        self.btn_generate_bill = QPushButton("Generate Bill")
-        self.btn_generate_bill.setObjectName("PrimaryButton")
-        self.btn_pay = QPushButton("Pay") # New Pay button
-        self.btn_mark_available = QPushButton("Mark Available") # New Mark Available button
-        payment_buttons_layout.addWidget(self.btn_generate_bill)
-        payment_buttons_layout.addWidget(self.btn_pay)
+        self.btn_checkout = QPushButton("Checkout & Pay")
+        self.btn_checkout.setObjectName("PrimaryButton")
+        self.btn_mark_available = QPushButton("Mark Available") # Mark Available button
+        payment_buttons_layout.addWidget(self.btn_checkout)
         payment_buttons_layout.addWidget(self.btn_mark_available) # Add Mark Available button
         self.button_layout.addLayout(payment_buttons_layout)
 
@@ -98,8 +96,7 @@ class TableManagementDialog(QDialog):
         self.btn_add_order.clicked.connect(self.add_order)
         self.btn_edit_order.clicked.connect(self.edit_order)
         self.btn_delete_order.clicked.connect(self.delete_order)
-        self.btn_generate_bill.clicked.connect(self.generate_bill)
-        self.btn_pay.clicked.connect(self.process_payment) # Connect Pay button
+        self.btn_checkout.clicked.connect(self.checkout_and_pay) # Connect merged Checkout & Pay button
         self.btn_mark_available.clicked.connect(self.mark_table_available) # Connect Mark Available button
 
     def get_table_number(self, table_id):
@@ -176,11 +173,14 @@ class TableManagementDialog(QDialog):
     def delete_order(self):
         MessageBox.info(self, "Delete Order", "Deleting individual order items is not yet implemented.")
 
-    def generate_bill(self):
+
+
+    def checkout_and_pay(self):
+        """Combined method that generates bill and processes payment in one workflow."""
         conn = self.controller.db.connect()
         cur = conn.cursor()
 
-        # Fetch all active orders for this table (use statuses that represent active/unbilled orders)
+        # Fetch all active orders for this table
         cur.execute("""
             SELECT id FROM Orders
             WHERE table_id = ? AND status IN ('Open', 'InKitchen', 'Served', 'Pending', 'Preparing', 'Ready')
@@ -188,9 +188,10 @@ class TableManagementDialog(QDialog):
         active_order_ids = [row['id'] for row in cur.fetchall()]
 
         if not active_order_ids:
-            MessageBox.info(self, "Generate Bill", "No active orders to bill for this table.")
+            MessageBox.info(self, "No Orders", "No active orders to checkout for this table.")
             return
 
+        # Generate bill details
         total_bill = 0
         bill_details = []
 
@@ -215,25 +216,40 @@ class TableManagementDialog(QDialog):
 
         detailed_bill_text = "\n\n".join(bill_details)
         
-        if MessageBox.confirm(self, "Confirm Bill Generation", 
-                              f"Total Bill for Table {self.get_table_number(self.table_id)}: ₹{total_bill:.2f}\n\n"
-                              f"Do you want to finalize this bill and mark orders as completed?",
-                              detailed_text=detailed_bill_text):
-            try:
-                # Update orders status to 'Paid'
-                for order_id in active_order_ids:
-                    cur.execute("UPDATE Orders SET status = 'Paid' WHERE id = ?", (order_id,))
-                
-                # Update table status to 'Cleaning'
-                cur.execute("UPDATE Tables SET status = 'Cleaning' WHERE id = ?", (self.table_id,))
-                
-                conn.commit()
-                MessageBox.success(self, "Bill Generated", 
-                                    f"Bill for Table {self.get_table_number(self.table_id)} (₹{total_bill:.2f}) has been finalized.\n"
-                                    "Table status set to 'Cleaning' and orders marked as 'Completed'.")
-                self.refresh_orders()
-                self.controller.hotel_view.refresh_tables() # Refresh tables in main view
+        # Show bill confirmation
+        if not MessageBox.confirm(self, "Confirm Checkout", 
+                                  f"Total Bill for Table {self.get_table_number(self.table_id)}: ₹{total_bill:.2f}\n\n"
+                                  f"Do you want to proceed with payment?",
+                                  confirm_text="Proceed to Payment",
+                                  cancel_text="Cancel",
+                                  detailed_text=detailed_bill_text):
+            return
 
+        # Calculate grand total with GST
+        gst_rate = 0.05
+        gst_amount = total_bill * gst_rate
+        grand_total = total_bill + gst_amount
+
+        # Show payment dialog
+        payment_dialog = PaymentDialog(self, total_amount=grand_total)
+        if payment_dialog.exec() == QDialog.Accepted:
+            payment_method = payment_dialog.payment_method
+            try:
+                # Record payments and mark orders as paid
+                for order_id in active_order_ids:
+                    cur.execute("SELECT COALESCE(SUM(qty*price),0) AS amt FROM OrderDetails WHERE order_id = ?", (order_id,))
+                    amt = float(cur.fetchone()["amt"] or 0)
+                    order_gst = round(amt * gst_rate, 2)
+                    # Insert payment record
+                    cur.execute("INSERT INTO Payments(order_id, amount, gst, method, paid_at) VALUES(?,?,?,?,?)",
+                                (order_id, amt, order_gst, payment_method, datetime.datetime.now().isoformat()))
+                    # Mark order paid
+                    cur.execute("UPDATE Orders SET status = 'Paid' WHERE id = ?", (order_id,))
+
+                # Update table to available
+                cur.execute("UPDATE Tables SET status = ? WHERE id = ?", ("Available", self.table_id))
+                conn.commit()
+                
                 # Generate PDF bill
                 html = "<h2>Restaurant Bill</h2>"
                 html += f"<p>Table #{self.get_table_number(self.table_id)} - {datetime.datetime.now().strftime('%Y-%m-%d %H:%M')}</p>"
@@ -252,12 +268,9 @@ class TableManagementDialog(QDialog):
                         item_cost = item['qty'] * item['price']
                         html += f"<tr><td>{item['name']}</td><td>{item['qty']}</td><td>₹{item['price']:.2f}</td><td>₹{item_cost:.2f}</td></tr>"
                 
-                gst_rate_pdf = 0.05 # 5% GST for PDF
-                gst_pdf = round(total_bill * gst_rate_pdf, 2)
-                total_with_gst_pdf = total_bill + gst_pdf
-
                 html += "</table>"
-                html += f"<p>Subtotal: ₹{total_bill:.2f}</p><p>GST ({gst_rate_pdf*100:.0f}%): ₹{gst_pdf:.2f}</p><h3>Total: ₹{total_with_gst_pdf:.2f}</h3>"
+                html += f"<p>Subtotal: ₹{total_bill:.2f}</p><p>GST ({gst_rate*100:.0f}%): ₹{gst_amount:.2f}</p><h3>Total: ₹{grand_total:.2f}</h3>"
+                html += f"<p>Payment Method: {payment_method}</p>"
                 
                 doc = QTextDocument()
                 doc.setHtml(html)
@@ -266,68 +279,17 @@ class TableManagementDialog(QDialog):
                 printer.setOutputFormat(QPrinter.PdfFormat)
                 printer.setOutputFileName(pdf_path)
                 doc.print(printer)
-                MessageBox.info(self, "Bill PDF Generated", f"Bill saved as {os.path.basename(pdf_path)}")
+                
+                MessageBox.success(self, "Checkout Complete",
+                                  f"Payment of ₹{grand_total:.2f} received via {payment_method}.\n"
+                                  f"Table {self.get_table_number(self.table_id)} is now available.\n"
+                                  f"Bill saved as {os.path.basename(pdf_path)}")
+                self.accept() # Close dialog after successful payment
+                self.controller.hotel_view.refresh_tables()
             except Exception as e:
                 conn.rollback()
-                MessageBox.error(self, "Billing Error", f"Failed to finalize bill: {e}")
-
-    def process_payment(self):
-        grand_total_text = self.grand_total_label.text()
-        # Extract the numerical value from "Grand Total: ₹X.XX"
-        try:
-            grand_total = float(grand_total_text.split('₹')[1])
-        except (IndexError, ValueError):
-            MessageBox.warning(self, "Payment Error", "Could not determine grand total for payment.")
-            return
-
-        if grand_total <= 0:
-            MessageBox.information(self, "Payment", "No outstanding amount to pay.")
-            return
-
-        payment_dialog = PaymentDialog(self, total_amount=grand_total)
-        if payment_dialog.exec() == QDialog.Accepted:
-            payment_method = payment_dialog.payment_method
-            try:
-                self.update_table_status_to_available(payment_method)
-                MessageBox.information(self, "Payment Successful",
-                                       f"Payment of ₹{grand_total:.2f} received via {payment_method}. Table {self.get_table_number(self.table_id)} is now available.")
-                self.accept() # Close the dialog after successful payment
-            except Exception as e:
-                MessageBox.error(self, "Payment Error", f"Failed to record payment: {e}")
-        else:
-            MessageBox.information(self, "Payment Cancelled", "Payment process was cancelled.")
-
-    def update_table_status_to_available(self, payment_method: str):
-        """Record payments for all active orders on this table, mark them paid, and free the table."""
-        conn = self.controller.db.connect()
-        cur = conn.cursor()
-        gst_rate = 0.05
-        try:
-            # Find active orders for the table
-            cur.execute("SELECT id FROM Orders WHERE table_id = ? AND status IN ('Open', 'InKitchen', 'Served', 'Pending', 'Preparing', 'Ready')", (self.table_id,))
-            order_rows = cur.fetchall()
-            order_ids = [r['id'] for r in order_rows]
-
-            for oid in order_ids:
-                # Calculate amount for each order
-                cur.execute("SELECT COALESCE(SUM(qty*price),0) AS amt FROM OrderDetails WHERE order_id = ?", (oid,))
-                amt = float(cur.fetchone()["amt"] or 0)
-                gst = round(amt * gst_rate, 2)
-                # Insert payment record
-                cur.execute("INSERT INTO Payments(order_id, amount, gst, method, paid_at) VALUES(?,?,?,?,?)",
-                            (oid, amt, gst, payment_method, datetime.datetime.now().isoformat()))
-                # Mark order paid
-                cur.execute("UPDATE Orders SET status = 'Paid' WHERE id = ?", (oid,))
-
-            # Finally set table available
-            cur.execute("UPDATE Tables SET status = ? WHERE id = ?", ("Available", self.table_id))
-            conn.commit()
-            logging.info(f"Table {self.table_id} status updated to 'Available' and orders marked 'Paid' with payments recorded.")
-            self.controller.hotel_view.refresh_tables()
-        except Exception as e:
-            conn.rollback()
-            logging.error(f"Failed to update table status or record payments for table {self.table_id}: {e}", exc_info=True)
-            MessageBox.error(self, "Database Error", f"Failed to update table status after payment: {e}")
+                MessageBox.error(self, "Checkout Error", f"Failed to complete checkout: {e}")
+                logging.error(f"Checkout error: {e}", exc_info=True)
 
     def mark_table_available(self):
         logging.info(f"mark_table_available called for table_id: {self.table_id}")
