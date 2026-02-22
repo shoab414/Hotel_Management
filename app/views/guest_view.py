@@ -497,12 +497,18 @@ class GuestView(QWidget):
             return
         cust_id = int(self.customers.item(row,0).text())
         if MessageBox.confirm(self, "Confirm Deletion", "Are you sure you want to delete this customer? This action cannot be undone."):
-            conn = self.controller.db.connect()
-            cur = conn.cursor()
-            cur.execute("DELETE FROM Customers WHERE id=?", (cust_id,))
-            conn.commit()
-            self.refresh_customers()
-            MessageBox.success(self, "Customer Deleted", "Customer has been deleted successfully.")
+            try:
+                conn = self.controller.db.connect()
+                cur = conn.cursor()
+                # Enable foreign key constraints to ensure cascade delete works
+                cur.execute("PRAGMA foreign_keys = ON")
+                cur.execute("DELETE FROM Customers WHERE id=?", (cust_id,))
+                conn.commit()
+                self.refresh_customers()
+                MessageBox.success(self, "Customer Deleted", "Customer has been deleted successfully.")
+            except Exception as e:
+                logging.error(f"Error deleting customer {cust_id}: {str(e)}")
+                MessageBox.error(self, "Delete Failed", f"Error deleting customer: {str(e)}")
 
     def export_customers_csv(self):
         conn = self.controller.db.connect()
