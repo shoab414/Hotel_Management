@@ -86,7 +86,10 @@ class ConsumptionDialog(QDialog):
         self.price.setDecimals(DECIMALS)
         
         self.consumption_date = QDateEdit()
+        self.consumption_date.setCalendarPopup(True)
+        self.consumption_date.setDisplayFormat('yyyy-MM-dd')
         self.consumption_date.setDate(QDate.currentDate())
+        self.consumption_date.setMinimumWidth(140)
         
         self.notes = QTextEdit()
         self.notes.setMaximumHeight(NOTES_MAX_HEIGHT)
@@ -214,15 +217,21 @@ class InventoryView(QWidget):
         filter_layout = QHBoxLayout()
         filter_layout.addWidget(QLabel("Filter by Date:"))
         filter_layout.addWidget(QLabel("From:"))
-        
+
         self.filter_date_from = QDateEdit()
+        self.filter_date_from.setCalendarPopup(True)
+        self.filter_date_from.setDisplayFormat('yyyy-MM-dd')
         self.filter_date_from.setDate(QDate.currentDate().addDays(-30))
+        self.filter_date_from.setMinimumWidth(140)
         self.filter_date_from.dateChanged.connect(self.filter_consumption_by_date)
         filter_layout.addWidget(self.filter_date_from)
-        
+
         filter_layout.addWidget(QLabel("To:"))
         self.filter_date_to = QDateEdit()
+        self.filter_date_to.setCalendarPopup(True)
+        self.filter_date_to.setDisplayFormat('yyyy-MM-dd')
         self.filter_date_to.setDate(QDate.currentDate())
+        self.filter_date_to.setMinimumWidth(140)
         self.filter_date_to.dateChanged.connect(self.filter_consumption_by_date)
         filter_layout.addWidget(self.filter_date_to)
         

@@ -64,13 +64,25 @@ class ReservationDialog(QDialog):
         self.room.setMinimumWidth(200)
         f.addRow("Room *:", self.room)
         
-        self.check_in = QLineEdit()
-        self.check_in.setPlaceholderText("YYYY-MM-DD")
+        from PySide6.QtWidgets import QDateEdit, QCheckBox
+        from PySide6.QtCore import QDate
+
+        self.check_in = QDateEdit()
+        self.check_in.setCalendarPopup(True)
+        self.check_in.setDisplayFormat('yyyy-MM-dd')
+        self.check_in.setDate(QDate.currentDate())
+        self.check_in.setMinimumWidth(140)
         f.addRow("Check-in *:", self.check_in)
-        
-        self.check_out = QLineEdit()
-        self.check_out.setPlaceholderText("YYYY-MM-DD")
+
+        self.check_out = QDateEdit()
+        self.check_out.setCalendarPopup(True)
+        self.check_out.setDisplayFormat('yyyy-MM-dd')
+        # Leave check_out default to tomorrow for convenience
+        self.check_out.setDate(QDate.currentDate().addDays(1))
+        self.check_out.setMinimumWidth(140)
+        self.no_checkout = QCheckBox("Open-ended (no check-out)")
         f.addRow("Check-out:", self.check_out)
+        f.addRow("", self.no_checkout)
         
         # Buttons
         button_layout = QHBoxLayout()
@@ -85,6 +97,14 @@ class ReservationDialog(QDialog):
         
         if db:
             self._load_rooms()
+
+    def get_check_in(self):
+        return self.check_in.date().toString('yyyy-MM-dd')
+
+    def get_check_out(self):
+        if self.no_checkout.isChecked():
+            return None
+        return self.check_out.date().toString('yyyy-MM-dd')
 
     def _load_rooms(self):
         conn = self.db.connect()
@@ -216,6 +236,9 @@ class HotelView(QWidget):
         self.reservations.setSelectionBehavior(QTableWidget.SelectRows)
         self.reservations.setSelectionMode(QTableWidget.ExtendedSelection)  # Allow multiple selection
         res_layout.addWidget(self.reservations)
+        # Make columns fit their content so dates are visible
+        self.reservations.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeToContents)
+        self.reservations.horizontalHeader().setStretchLastSection(False)
         self.tabs.addTab(res_tab, "Reservations")
 
         
@@ -260,7 +283,7 @@ class HotelView(QWidget):
                 WHERE r.id NOT IN (
                     SELECT r3.id FROM Reservations r3
                     WHERE r3.status = 'CheckedIn' 
-                    AND r3.check_out IS NULL
+                        AND (r3.check_out IS NULL OR TRIM(r3.check_out) = '')
                     AND NOT EXISTS (
                         SELECT 1 FROM Reservations r4 
                         WHERE r4.customer_id = r3.customer_id 
@@ -282,7 +305,7 @@ class HotelView(QWidget):
                 WHERE r.id NOT IN (
                     SELECT r3.id FROM Reservations r3
                     WHERE r3.status = 'CheckedIn' 
-                    AND r3.check_out IS NULL
+                        AND (r3.check_out IS NULL OR TRIM(r3.check_out) = '')
                     AND NOT EXISTS (
                         SELECT 1 FROM Reservations r4 
                         WHERE r4.customer_id = r3.customer_id 
@@ -301,9 +324,17 @@ class HotelView(QWidget):
             self.reservations.setItem(i,2,QTableWidgetItem(r["phone"] or ""))
             self.reservations.setItem(i,3,QTableWidgetItem(r["email"] or ""))
             self.reservations.setItem(i,4,QTableWidgetItem(r["room"]))
-            self.reservations.setItem(i,5,QTableWidgetItem(r["ci"]))
-            self.reservations.setItem(i,6,QTableWidgetItem(r["co"] or ""))
-            self.reservations.setItem(i,7,QTableWidgetItem(r["status"]))
+            ci = r["ci"] or ""
+            co = r["co"] or ""
+            item_ci = QTableWidgetItem(ci)
+            item_ci.setTextAlignment(Qt.AlignCenter)
+            item_co = QTableWidgetItem(co)
+            item_co.setTextAlignment(Qt.AlignCenter)
+            item_status = QTableWidgetItem(r["status"])
+            item_status.setTextAlignment(Qt.AlignCenter)
+            self.reservations.setItem(i,5,item_ci)
+            self.reservations.setItem(i,6,item_co)
+            self.reservations.setItem(i,7,item_status)
         
         
 
@@ -381,7 +412,7 @@ class HotelView(QWidget):
                     MessageBox.warning(self, "Validation Required", "Please select a room for reservation.")
                 return
             
-            if not dlg.check_in.text().strip():
+            if not dlg.get_check_in():
                 QMessageBox.warning(self, "Validation", "Check-in date is required.")
                 return
             conn = self.controller.db.connect()
@@ -406,9 +437,9 @@ class HotelView(QWidget):
             cur.execute("INSERT INTO Customers(name, phone, email) VALUES(?, ?, ?)", 
                        (customer_name, customer_phone, customer_email))
             cust_id = cur.lastrowid
-            check_out_val = dlg.check_out.text().strip() or None
+            check_out_val = dlg.get_check_out()
             cur.execute("INSERT INTO Reservations(customer_id,room_id,check_in,check_out,status) VALUES(?,?,?,?,?)",
-                        (cust_id, room_id, dlg.check_in.text().strip(), check_out_val, "Reserved"))
+                        (cust_id, room_id, dlg.get_check_in(), check_out_val, "Reserved"))
             conn.commit()
             self.refresh()
             MessageBox.success(self, "Reservation Created", "Reservation created successfully!")
@@ -446,8 +477,18 @@ class HotelView(QWidget):
                                customer_name=customer_name, 
                                customer_phone=customer_phone, 
                                customer_email=customer_email)
-        dlg.check_in.setText(check_in_date or "")
-        dlg.check_out.setText(check_out_date or "")
+        from PySide6.QtCore import QDate
+        if check_in_date:
+            try:
+                dlg.check_in.setDate(QDate.fromString(check_in_date, 'yyyy-MM-dd'))
+            except Exception:
+                pass
+        if check_out_date:
+            try:
+                dlg.check_out.setDate(QDate.fromString(check_out_date, 'yyyy-MM-dd'))
+                dlg.no_checkout.setChecked(False)
+            except Exception:
+                dlg.no_checkout.setChecked(True)
         
         # Load current room
         room_number = self.reservations.item(row,4).text()
@@ -466,11 +507,11 @@ class HotelView(QWidget):
                             dlg.customer_email.text().strip() or None, customer_id))
                 
                 # Update reservation dates if changed
-                new_check_in = dlg.check_in.text().strip()
-                new_check_out = dlg.check_out.text().strip()
-                if new_check_in or new_check_out:
+                new_check_in = dlg.get_check_in()
+                new_check_out = dlg.get_check_out()
+                if new_check_in is not None or new_check_out is not None:
                     cur.execute("UPDATE Reservations SET check_in=?, check_out=? WHERE id=?", 
-                               (new_check_in or check_in_date, new_check_out or check_out_date, res_id))
+                               (new_check_in or check_in_date, new_check_out if new_check_out is not None else check_out_date, res_id))
                 
                 conn.commit()
                 self.refresh()

@@ -1,5 +1,8 @@
-from PySide6.QtWidgets import QDialog, QVBoxLayout, QHBoxLayout, QLabel, QSpinBox, QPushButton, QListWidget, QListWidgetItem, QLineEdit
+from PySide6.QtWidgets import (QDialog, QVBoxLayout, QHBoxLayout, QLabel, QSpinBox,
+                             QPushButton, QListWidget, QListWidgetItem, QLineEdit,
+                             QTabWidget, QWidget, QScrollArea, QFrame)
 from PySide6.QtCore import Qt
+from PySide6.QtGui import QFont, QColor
 import logging
 import datetime
 from app.utils.message import MessageBox
@@ -10,9 +13,10 @@ class AddOrderDialog(QDialog):
         self.table_id = table_id
         self.controller = controller
         self.setWindowTitle(f"Add Order for Table {self.get_table_number(table_id)}")
-        self.setMinimumSize(600, 500)
+        self.setMinimumSize(1000, 800)
 
         self.selected_items = {} # {menu_item_id: quantity}
+        self.category_lists = {} # {category: QListWidget}
 
         self.layout = QVBoxLayout(self)
 
@@ -20,21 +24,68 @@ class AddOrderDialog(QDialog):
         self.title_label.setObjectName("PageTitle")
         self.layout.addWidget(self.title_label)
 
-        # Search and Menu Items
+        # Search
         self.search_input = QLineEdit()
         self.search_input.setPlaceholderText("Search menu items...")
         self.search_input.textChanged.connect(self.filter_menu_items)
         self.layout.addWidget(self.search_input)
 
-        self.menu_list = QListWidget()
-        self.menu_list.itemDoubleClicked.connect(self.add_item_to_order)
-        self.layout.addWidget(self.menu_list)
+        # Main content layout (menu and selected items side by side)
+        main_content = QHBoxLayout()
 
-        # Selected Items Display
+        # Left side - Menu tabs
+        menu_container = QWidget()
+        menu_layout = QVBoxLayout(menu_container)
+        menu_label = QLabel("Available Items:")
+        menu_label_font = QFont()
+        menu_label_font.setBold(True)
+        menu_label_font.setPointSize(10)
+        menu_label.setFont(menu_label_font)
+        menu_layout.addWidget(menu_label)
+
+        self.menu_tabs = QTabWidget()
+        menu_layout.addWidget(self.menu_tabs)
+        main_content.addWidget(menu_container, 1)
+
+        # Right side - Selected Items Display
+        selected_container = QFrame()
+        selected_container.setFrameStyle(QFrame.StyledPanel | QFrame.Sunken)
+        selected_layout = QVBoxLayout(selected_container)
+
         self.selected_items_label = QLabel("Selected Items:")
-        self.layout.addWidget(self.selected_items_label)
+        selected_label_font = QFont()
+        selected_label_font.setBold(True)
+        selected_label_font.setPointSize(10)
+        self.selected_items_label.setFont(selected_label_font)
+        selected_layout.addWidget(self.selected_items_label)
+
         self.selected_items_list = QListWidget()
-        self.layout.addWidget(self.selected_items_list)
+        self.selected_items_list.setMinimumWidth(280)
+        self.selected_items_list.setSpacing(5)
+        selected_layout.addWidget(self.selected_items_list)
+
+        # Summary section
+        summary_frame = QFrame()
+        summary_frame.setFrameStyle(QFrame.StyledPanel)
+        summary_layout = QVBoxLayout(summary_frame)
+        summary_layout.setContentsMargins(5, 5, 5, 5)
+
+        self.summary_label = QLabel("Total Items: 0")
+        self.summary_label.setFont(QFont("Arial", 9))
+        summary_layout.addWidget(self.summary_label)
+
+        self.total_price_label = QLabel("Total: ₹0.00")
+        total_price_font = QFont()
+        total_price_font.setBold(True)
+        total_price_font.setPointSize(11)
+        self.total_price_label.setFont(total_price_font)
+        summary_layout.addWidget(self.total_price_label)
+
+        selected_layout.addWidget(summary_frame)
+
+        main_content.addWidget(selected_container, 0)
+
+        self.layout.addLayout(main_content, 1)
 
         # Buttons
         self.button_layout = QHBoxLayout()
@@ -67,49 +118,91 @@ class AddOrderDialog(QDialog):
         return result['number'] if result else "N/A"
 
     def load_menu_items(self):
-        self.menu_list.clear()
+        # Clear existing tabs
+        self.menu_tabs.clear()
+        self.category_lists.clear()
+
         conn = self.controller.db.connect()
         cur = conn.cursor()
-        cur.execute("SELECT id, name, price FROM MenuItems ORDER BY name")
+        cur.execute("SELECT id, name, price, category FROM MenuItems WHERE active = 1 ORDER BY category, name")
         self.all_menu_items = cur.fetchall()
+
+        # Group items by category
+        categories = {}
+        for item in self.all_menu_items:
+            category = item['category']
+            if category not in categories:
+                categories[category] = []
+            categories[category].append(item)
+
+        # Create tabs for each category
+        for category in sorted(categories.keys()):
+            list_widget = QListWidget()
+            list_widget.itemDoubleClicked.connect(self.add_item_to_order)
+
+            for item in categories[category]:
+                list_item = QListWidgetItem(f"{item['name']} (₹{item['price']:.2f})")
+                list_item.setData(Qt.UserRole, item['id'])
+                list_widget.addItem(list_item)
+
+            self.category_lists[category] = list_widget
+            self.menu_tabs.addTab(list_widget, category)
+
         self.filter_menu_items()
 
     def filter_menu_items(self):
-        self.menu_list.clear()
         search_text = self.search_input.text().strip().lower()
-        for item in self.all_menu_items:
-            if search_text in item['name'].lower():
-                list_item = QListWidgetItem(f"{item['name']} (₹{item['price']:.2f})")
-                list_item.setData(Qt.UserRole, item['id'])
-                self.menu_list.addItem(list_item)
+
+        for category, list_widget in self.category_lists.items():
+            # Hide items that don't match search
+            for i in range(list_widget.count()):
+                item = list_widget.item(i)
+                item_text = item.text().lower()
+                item.setHidden(not (search_text in item_text))
+
+            # Show tab only if it has visible items
+            if search_text:
+                has_visible = any(not list_widget.item(i).isHidden()
+                                 for i in range(list_widget.count()))
+                tab_index = self.menu_tabs.indexOf(list_widget)
+                if tab_index >= 0:
+                    self.menu_tabs.setTabVisible(tab_index, has_visible)
+            else:
+                # Show all tabs when search is empty
+                tab_index = self.menu_tabs.indexOf(list_widget)
+                if tab_index >= 0:
+                    self.menu_tabs.setTabVisible(tab_index, True)
 
     def add_item_to_order(self):
-        selected_item = self.menu_list.currentItem()
+        # Get the current tab's list widget
+        current_widget = self.menu_tabs.currentWidget()
+        if not isinstance(current_widget, QListWidget):
+            MessageBox.warning(self, "No Item Selected", "Please select a menu item to add.")
+            return
+
+        selected_item = current_widget.currentItem()
         if not selected_item:
             MessageBox.warning(self, "No Item Selected", "Please select a menu item to add.")
             return
 
         menu_item_id = selected_item.data(Qt.UserRole)
-        
+
         # Prompt for quantity
-        quantity, ok = QSpinBox(self).value, True # Placeholder, will replace with QInputDialog
-        
-        # For now, let's use a simple spinbox for quantity
         spinbox = QSpinBox(self)
         spinbox.setMinimum(1)
         spinbox.setMaximum(100)
         spinbox.setValue(1)
-        
+
         dialog = QDialog(self)
         dialog.setWindowTitle("Enter Quantity")
         dialog_layout = QVBoxLayout(dialog)
         dialog_layout.addWidget(QLabel(f"Enter quantity for {selected_item.text()}:"))
         dialog_layout.addWidget(spinbox)
-        
+
         ok_button = QPushButton("OK")
         ok_button.clicked.connect(dialog.accept)
         dialog_layout.addWidget(ok_button)
-        
+
         if dialog.exec() == QDialog.Accepted:
             quantity = spinbox.value()
             if menu_item_id in self.selected_items:
@@ -133,13 +226,31 @@ class AddOrderDialog(QDialog):
         self.selected_items_list.clear()
         conn = self.controller.db.connect()
         cur = conn.cursor()
+
+        total_items = 0
+        total_price = 0.0
+
         for item_id, quantity in self.selected_items.items():
             cur.execute("SELECT name, price FROM MenuItems WHERE id = ?", (item_id,))
             item_info = cur.fetchone()
             if item_info:
-                list_item = QListWidgetItem(f"{quantity}x {item_info['name']} (₹{item_info['price']:.2f} each)")
+                item_total = item_info['price'] * quantity
+                total_items += quantity
+                total_price += item_total
+
+                # Create detailed item display
+                item_text = f"{quantity}x {item_info['name']}\n₹{item_info['price']:.2f} each → ₹{item_total:.2f}"
+                list_item = QListWidgetItem(item_text)
                 list_item.setData(Qt.UserRole, item_id)
+
+                # Style the item
+                list_item.setSizeHint(list_item.sizeHint() + 10)
+
                 self.selected_items_list.addItem(list_item)
+
+        # Update summary
+        self.summary_label.setText(f"Total Items: {total_items}")
+        self.total_price_label.setText(f"Total: ₹{total_price:.2f}")
 
     def save_order(self):
         if not self.selected_items:
