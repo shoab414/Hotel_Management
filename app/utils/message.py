@@ -186,7 +186,8 @@ class MessageBox:
 
     @staticmethod
     def confirm(parent: QWidget, title: str, message: str, 
-                confirm_text: str = "Confirm", cancel_text: str = "Cancel") -> bool:
+                confirm_text: str = "Confirm", cancel_text: str = "Cancel",
+                detailed_text: Optional[str] = None) -> bool:
         """Show a styled confirmation dialog with custom button labels.
         
         Args:
@@ -195,6 +196,7 @@ class MessageBox:
             message: Main message asking for user confirmation.
             confirm_text: Label text for the confirmation button (default: "Confirm").
             cancel_text: Label text for the cancel button (default: "Cancel").
+            detailed_text: Optional detailed text for expandable details section.
             
         Returns:
             True if user clicked confirm button, False if cancelled.
@@ -204,6 +206,9 @@ class MessageBox:
         msg.setWindowTitle(title)
         msg.setText(f"<h3 style='color:#7C3AED; margin:0;'>{title}</h3>")
         msg.setInformativeText(f"<p style='margin:10px 0; color:#374151;'>{message}</p>")
+        
+        if detailed_text:
+            msg.setDetailedText(detailed_text)
         
         msg.setStyleSheet("""
             QMessageBox {
