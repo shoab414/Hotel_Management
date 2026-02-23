@@ -1,5 +1,6 @@
 from PySide6.QtWidgets import QWidget, QVBoxLayout, QTabWidget, QHBoxLayout, QLabel, QDateEdit, QPushButton, QTableWidget, QTableWidgetItem
 from PySide6.QtCore import QDate, Qt
+from app.utils.calendar_icon import apply_calendar_icon
 from PySide6.QtCharts import QChartView, QChart, QBarSeries, QBarSet, QPieSeries, QLineSeries, QValueAxis, QBarCategoryAxis
 import datetime
 
@@ -31,6 +32,8 @@ class AnalyticsView(QWidget):
         self.daily_date.setDisplayFormat('yyyy-MM-dd')
         self.daily_date.setDate(QDate.currentDate())
         self.daily_date.setMinimumWidth(140)
+        self.daily_date.setToolTip("Click the calendar icon to select date")
+        apply_calendar_icon(self.daily_date)
         self.daily_refresh = QPushButton("Refresh")
         filter_bar.addWidget(QLabel("Date"))
         filter_bar.addWidget(self.daily_date)
@@ -67,6 +70,8 @@ class AnalyticsView(QWidget):
         self.dishes_date.setDisplayFormat('yyyy-MM-dd')
         self.dishes_date.setDate(QDate.currentDate())
         self.dishes_date.setMinimumWidth(140)
+        self.dishes_date.setToolTip("Click the calendar icon to select date")
+        apply_calendar_icon(self.dishes_date)
         filter_bar.addWidget(QLabel("Date:"))
         filter_bar.addWidget(self.dishes_date)
         self.dishes_refresh = QPushButton("Refresh")

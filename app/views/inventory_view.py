@@ -9,6 +9,7 @@ from PySide6.QtWidgets import (
 )
 from PySide6.QtCore import Qt, QDate
 from PySide6.QtGui import QShowEvent
+from app.utils.calendar_icon import apply_calendar_icon
 
 # Constants
 MAX_SPINBOX_VALUE = 100000.0
@@ -90,6 +91,8 @@ class ConsumptionDialog(QDialog):
         self.consumption_date.setDisplayFormat('yyyy-MM-dd')
         self.consumption_date.setDate(QDate.currentDate())
         self.consumption_date.setMinimumWidth(140)
+        self.consumption_date.setToolTip("Click the calendar icon to select date")
+        apply_calendar_icon(self.consumption_date)
         
         self.notes = QTextEdit()
         self.notes.setMaximumHeight(NOTES_MAX_HEIGHT)
@@ -223,7 +226,9 @@ class InventoryView(QWidget):
         self.filter_date_from.setDisplayFormat('yyyy-MM-dd')
         self.filter_date_from.setDate(QDate.currentDate().addDays(-30))
         self.filter_date_from.setMinimumWidth(140)
+        self.filter_date_from.setToolTip("Click the calendar icon to select start date")
         self.filter_date_from.dateChanged.connect(self.filter_consumption_by_date)
+        apply_calendar_icon(self.filter_date_from)
         filter_layout.addWidget(self.filter_date_from)
 
         filter_layout.addWidget(QLabel("To:"))
@@ -232,7 +237,9 @@ class InventoryView(QWidget):
         self.filter_date_to.setDisplayFormat('yyyy-MM-dd')
         self.filter_date_to.setDate(QDate.currentDate())
         self.filter_date_to.setMinimumWidth(140)
+        self.filter_date_to.setToolTip("Click the calendar icon to select end date")
         self.filter_date_to.dateChanged.connect(self.filter_consumption_by_date)
+        apply_calendar_icon(self.filter_date_to)
         filter_layout.addWidget(self.filter_date_to)
         
         self.btn_reset_filter = QPushButton("Reset")

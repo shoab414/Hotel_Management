@@ -136,17 +136,46 @@ QComboBox::drop-down {
     padding-right: 8px;
 }
 
+QComboBox::down-arrow {
+    image: none;
+    background: transparent;
+    color: #FFFFFF;
+}
+
+QComboBox QAbstractItemView {
+    background: #1E293B;
+    color: #FFFFFF;
+    border: 1px solid #334155;
+    selection-background-color: #3B82F6;
+    selection-color: #FFFFFF;
+}
+
+QComboBox QAbstractItemView::item {
+    padding: 8px 12px;
+    color: #FFFFFF;
+    background: #1E293B;
+}
+
+QComboBox QAbstractItemView::item:selected {
+    background: #3B82F6;
+    color: #FFFFFF;
+}
+
+QComboBox QAbstractItemView::item:hover {
+    background: #0F172A;
+    color: #60A5FA;
+}
+
 QDateEdit::drop-down {
     border: none;
-    padding-left: 4px;
-    padding-right: 4px;
-    width: 20px;
-    background: #0F172A;
-    border-radius: 6px;
+    background: transparent;
+    width: 28px;
+    margin-right: 4px;
+    image: url(:/resources/calendar.png);
 }
 
 QDateEdit::drop-down:hover {
-    background: #334155;
+    background: transparent;
 }
 
 /* Calendar Widget Styling for Dark Mode */

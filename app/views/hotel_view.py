@@ -4,6 +4,7 @@ import datetime
 from app.views.table_management_dialog import TableManagementDialog
 from .checkout_dialog import CheckoutDialog
 from app.utils.message import MessageBox
+from app.utils.calendar_icon import apply_calendar_icon
 import logging
 
 class RoomDialog(QDialog):
@@ -72,6 +73,8 @@ class ReservationDialog(QDialog):
         self.check_in.setDisplayFormat('yyyy-MM-dd')
         self.check_in.setDate(QDate.currentDate())
         self.check_in.setMinimumWidth(140)
+        self.check_in.setToolTip("Click the calendar icon to select check-in date")
+        apply_calendar_icon(self.check_in)
         f.addRow("Check-in *:", self.check_in)
 
         self.check_out = QDateEdit()
@@ -80,6 +83,8 @@ class ReservationDialog(QDialog):
         # Leave check_out default to tomorrow for convenience
         self.check_out.setDate(QDate.currentDate().addDays(1))
         self.check_out.setMinimumWidth(140)
+        self.check_out.setToolTip("Click the calendar icon to select check-out date")
+        apply_calendar_icon(self.check_out)
         self.no_checkout = QCheckBox("Open-ended (no check-out)")
         f.addRow("Check-out:", self.check_out)
         f.addRow("", self.no_checkout)

@@ -4,6 +4,7 @@ import datetime
 import logging
 import csv, os
 from app.utils.message import MessageBox # Assuming MessageBox is in utils
+from app.utils.calendar_icon import apply_calendar_icon
 from .checkout_dialog import CheckoutDialog
 
 class CustomerDialog(QDialog):
@@ -37,11 +38,15 @@ class CustomerCheckinDialog(QDialog):
         self.check_in.setCalendarPopup(True)
         self.check_in.setDisplayFormat('yyyy-MM-dd')
         self.check_in.setDate(QDate.currentDate())
+        self.check_in.setToolTip("Click the calendar icon to select check-in date")
+        apply_calendar_icon(self.check_in)
 
         self.check_out = QDateEdit()
         self.check_out.setCalendarPopup(True)
         self.check_out.setDisplayFormat('yyyy-MM-dd')
         self.check_out.setDate(QDate.currentDate().addDays(1))
+        self.check_out.setToolTip("Click the calendar icon to select check-out date")
+        apply_calendar_icon(self.check_out)
         self.no_checkout = QCheckBox("Open-ended (no check-out)")
         ok = QPushButton("Check-in")
         ok.clicked.connect(self.accept)
@@ -216,6 +221,8 @@ class GuestView(QWidget):
         self.date_from.setDisplayFormat('yyyy-MM-dd')
         self.date_from.setDate(QDate.currentDate())
         self.date_from.setMinimumWidth(140)
+        self.date_from.setToolTip("Click the calendar icon to open date picker")
+        apply_calendar_icon(self.date_from)
 
         to_label = QLabel("To:")
         self.date_to = QDateEdit()
@@ -223,6 +230,8 @@ class GuestView(QWidget):
         self.date_to.setDisplayFormat('yyyy-MM-dd')
         self.date_to.setDate(QDate.currentDate())
         self.date_to.setMinimumWidth(140)
+        self.date_to.setToolTip("Click the calendar icon to open date picker")
+        apply_calendar_icon(self.date_to)
 
         self.btn_filter_by_date = QPushButton("Filter by Date")
         self.btn_filter_by_date.setObjectName("PrimaryButton")
@@ -285,7 +294,6 @@ class GuestView(QWidget):
         conn = self.controller.db.connect()
         cur = conn.cursor()
         # Show customers with active stays (CheckedIn or Reserved for today/future)
-        # Exclude customers with CheckedOut status
         if term:
             like = f"%{term}%"
             cur.execute("""
@@ -293,17 +301,13 @@ class GuestView(QWidget):
                        r.room_id AS room_id, rm.number AS current_room, r.status AS res_status,
                        r.check_in AS check_in, r.check_out AS check_out
                 FROM Customers c
-                LEFT JOIN Reservations r ON r.customer_id = c.id
+                INNER JOIN Reservations r ON r.customer_id = c.id
+                LEFT JOIN Rooms rm ON rm.id = r.room_id
+                WHERE (c.name LIKE ? OR c.phone LIKE ? OR c.email LIKE ?)
                   AND (
                         r.status = 'CheckedIn'
                         OR (r.status = 'Reserved' AND DATE(r.check_in) <= DATE('now'))
                       )
-                LEFT JOIN Rooms rm ON rm.id = r.room_id
-                WHERE (c.name LIKE ? OR c.phone LIKE ? OR c.email LIKE ?)
-                  AND NOT EXISTS (
-                    SELECT 1 FROM Reservations res
-                    WHERE res.customer_id = c.id AND res.status = 'CheckedOut'
-                  )
                 ORDER BY c.id DESC
             """, (like, like, like))
         else:
@@ -312,16 +316,12 @@ class GuestView(QWidget):
                        r.room_id AS room_id, rm.number AS current_room, r.status AS res_status,
                        r.check_in AS check_in, r.check_out AS check_out
                 FROM Customers c
-                LEFT JOIN Reservations r ON r.customer_id = c.id
-                  AND (
+                INNER JOIN Reservations r ON r.customer_id = c.id
+                LEFT JOIN Rooms rm ON rm.id = r.room_id
+                WHERE (
                         r.status = 'CheckedIn'
                         OR (r.status = 'Reserved' AND DATE(r.check_in) <= DATE('now'))
                       )
-                LEFT JOIN Rooms rm ON rm.id = r.room_id
-                WHERE NOT EXISTS (
-                    SELECT 1 FROM Reservations res
-                    WHERE res.customer_id = c.id AND res.status = 'CheckedOut'
-                  )
                 ORDER BY c.id DESC
             """)
         rows = cur.fetchall()

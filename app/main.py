@@ -6,6 +6,7 @@ import logging
 from PySide6.QtWidgets import QApplication
 from app.core.app import AppController
 from app.utils.theme import ThemeManager
+from app.utils.calendar_icon import register_calendar_resources
 from app.views.login_view import LoginWindow
 from app.core.database import DatabaseManager
 
@@ -33,7 +34,10 @@ def main() -> None:
     """Main application entry point."""
     setup_logging()
     logging.info("Application main function started.")
-    
+
+    # Register calendar icon resources
+    register_calendar_resources()
+
     # Initialize database
     db = initialize_database()
     
