@@ -28,7 +28,7 @@ class RoomDialog(QDialog):
         f.addRow(ok)
 
 class ReservationDialog(QDialog):
-    def __init__(self, parent=None, db=None, edit_mode=False, customer_name="", customer_phone="", customer_email=""):
+    def __init__(self, parent=None, db=None, edit_mode=False, customer_name="", customer_phone="", customer_email="", customer_doc_type="", customer_doc_number=""):
         super().__init__(parent)
         self.setWindowTitle("Reservation" if not edit_mode else "Edit Reservation")
         self.db = db
@@ -56,6 +56,18 @@ class ReservationDialog(QDialog):
         if edit_mode:
             self.customer_email.setText(customer_email or "")
         f.addRow("Email:", self.customer_email)
+        
+        self.customer_doc_type = QComboBox()
+        self.customer_doc_type.addItems(["", "Aadhar Card", "PAN Card", "Passport", "Driving License", "Voter ID", "Other"])
+        if edit_mode:
+            self.customer_doc_type.setCurrentText(customer_doc_type or "")
+        f.addRow("Document Type:", self.customer_doc_type)
+        
+        self.customer_doc_number = QLineEdit()
+        self.customer_doc_number.setPlaceholderText("Document number")
+        if edit_mode:
+            self.customer_doc_number.setText(customer_doc_number or "")
+        f.addRow("Document Number:", self.customer_doc_number)
         
         # Reservation Details Section
         res_label = QLabel("<b>Reservation Details</b>")
@@ -235,8 +247,8 @@ class HotelView(QWidget):
         res_bar.addWidget(self.btn_check_out)
         res_bar.addWidget(self.res_search, 1)
         res_layout.addLayout(res_bar)
-        self.reservations = QTableWidget(0, 8)
-        self.reservations.setHorizontalHeaderLabels(["ID","Customer","Phone","Email","Room","Check-in","Check-out","Status"])
+        self.reservations = QTableWidget(0, 10)
+        self.reservations.setHorizontalHeaderLabels(["ID","Customer","Phone","Email","Doc Type","Document","Room","Check-in","Check-out","Status"])
         self.reservations.verticalHeader().setSectionResizeMode(QHeaderView.ResizeToContents)
         self.reservations.setSelectionBehavior(QTableWidget.SelectRows)
         self.reservations.setSelectionMode(QTableWidget.ExtendedSelection)  # Allow multiple selection
@@ -281,6 +293,7 @@ class HotelView(QWidget):
             like = f"%{term}%"
             cur.execute("""
                 SELECT r.id AS id, c.name AS customer, c.phone AS phone, c.email AS email,
+                       c.document_type AS doc_type, c.document_number AS doc_num,
                        rm.number AS room, r.check_in AS ci, r.check_out AS co, r.status AS status
                 FROM Reservations r
                 JOIN Customers c ON r.customer_id = c.id
@@ -303,6 +316,7 @@ class HotelView(QWidget):
         else:
             cur.execute("""
                 SELECT r.id AS id, c.name AS customer, c.phone AS phone, c.email AS email,
+                       c.document_type AS doc_type, c.document_number AS doc_num,
                        rm.number AS room, r.check_in AS ci, r.check_out AS co, r.status AS status
                 FROM Reservations r
                 JOIN Customers c ON r.customer_id = c.id
@@ -328,7 +342,9 @@ class HotelView(QWidget):
             self.reservations.setItem(i,1,QTableWidgetItem(r["customer"]))
             self.reservations.setItem(i,2,QTableWidgetItem(r["phone"] or ""))
             self.reservations.setItem(i,3,QTableWidgetItem(r["email"] or ""))
-            self.reservations.setItem(i,4,QTableWidgetItem(r["room"]))
+            self.reservations.setItem(i,4,QTableWidgetItem(r["doc_type"] or ""))
+            self.reservations.setItem(i,5,QTableWidgetItem(r["doc_num"] or ""))
+            self.reservations.setItem(i,6,QTableWidgetItem(r["room"]))
             ci = r["ci"] or ""
             co = r["co"] or ""
             item_ci = QTableWidgetItem(ci)
@@ -337,9 +353,9 @@ class HotelView(QWidget):
             item_co.setTextAlignment(Qt.AlignCenter)
             item_status = QTableWidgetItem(r["status"])
             item_status.setTextAlignment(Qt.AlignCenter)
-            self.reservations.setItem(i,5,item_ci)
-            self.reservations.setItem(i,6,item_co)
-            self.reservations.setItem(i,7,item_status)
+            self.reservations.setItem(i,7,item_ci)
+            self.reservations.setItem(i,8,item_co)
+            self.reservations.setItem(i,9,item_status)
         
         
 
@@ -439,8 +455,10 @@ class HotelView(QWidget):
             customer_name = dlg.customer.text().strip()
             customer_phone = dlg.customer_phone.text().strip() or None
             customer_email = dlg.customer_email.text().strip() or None
-            cur.execute("INSERT INTO Customers(name, phone, email) VALUES(?, ?, ?)", 
-                       (customer_name, customer_phone, customer_email))
+            customer_doc_type = dlg.customer_doc_type.currentText() or None
+            customer_doc_number = dlg.customer_doc_number.text().strip() or None
+            cur.execute("INSERT INTO Customers(name, phone, email, document_type, document_number) VALUES(?, ?, ?, ?, ?)", 
+                       (customer_name, customer_phone, customer_email, customer_doc_type, customer_doc_number))
             cust_id = cur.lastrowid
             check_out_val = dlg.get_check_out()
             cur.execute("INSERT INTO Reservations(customer_id,room_id,check_in,check_out,status) VALUES(?,?,?,?,?)",

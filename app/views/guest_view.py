@@ -15,11 +15,16 @@ class CustomerDialog(QDialog):
         self.name = QLineEdit()
         self.phone = QLineEdit()
         self.email = QLineEdit()
+        self.document_type = QComboBox()
+        self.document_type.addItems(["", "Aadhar Card", "PAN Card", "Passport", "Driving License", "Voter ID", "Other"])
+        self.document_number = QLineEdit()
         ok = QPushButton("Save")
         ok.clicked.connect(self.accept)
         f.addRow("Name", self.name)
         f.addRow("Phone", self.phone)
         f.addRow("Email", self.email)
+        f.addRow("Document Type", self.document_type)
+        f.addRow("Document Number", self.document_number)
         f.addRow(ok)
 
 class CustomerCheckinDialog(QDialog):
@@ -249,8 +254,8 @@ class GuestView(QWidget):
 
         cust_layout.addLayout(date_filter_layout)
 
-        self.customers = QTableWidget(0, 8)
-        self.customers.setHorizontalHeaderLabels(["ID","Name","Phone","Email","Current Room","Res Status","Check-in","Check-out"])
+        self.customers = QTableWidget(0, 10)
+        self.customers.setHorizontalHeaderLabels(["ID","Name","Phone","Email","Doc Type","Document Number","Current Room","Res Status","Check-in","Check-out"])
         self.customers.setSelectionBehavior(QTableWidget.SelectRows) # Select entire rows
         self.customers.setEditTriggers(QTableWidget.NoEditTriggers) # Make table read-only
         self.customers.horizontalHeader().setStretchLastSection(True) # Stretch last column
@@ -298,6 +303,7 @@ class GuestView(QWidget):
             like = f"%{term}%"
             cur.execute("""
                 SELECT c.id AS id, c.name AS name, c.phone AS phone, c.email AS email,
+                       c.document_type AS doc_type, c.document_number AS doc_number,
                        r.room_id AS room_id, rm.number AS current_room, r.status AS res_status,
                        r.check_in AS check_in, r.check_out AS check_out
                 FROM Customers c
@@ -313,6 +319,7 @@ class GuestView(QWidget):
         else:
             cur.execute("""
                 SELECT c.id AS id, c.name AS name, c.phone AS phone, c.email AS email,
+                       c.document_type AS doc_type, c.document_number AS doc_number,
                        r.room_id AS room_id, rm.number AS current_room, r.status AS res_status,
                        r.check_in AS check_in, r.check_out AS check_out
                 FROM Customers c
@@ -331,6 +338,8 @@ class GuestView(QWidget):
             self.customers.setItem(i,1,QTableWidgetItem(r["name"] or ""))
             self.customers.setItem(i,2,QTableWidgetItem(r["phone"] or ""))
             self.customers.setItem(i,3,QTableWidgetItem(r["email"] or ""))
+            self.customers.setItem(i,4,QTableWidgetItem(r["doc_type"] or ""))
+            self.customers.setItem(i,5,QTableWidgetItem(r["doc_number"] or ""))
             # Normalize and align room/status/date columns for readability
             item_room = QTableWidgetItem(r["current_room"] or "")
             item_room.setTextAlignment(Qt.AlignCenter)
@@ -342,10 +351,10 @@ class GuestView(QWidget):
             item_ci.setTextAlignment(Qt.AlignCenter)
             item_co = QTableWidgetItem(check_out_str)
             item_co.setTextAlignment(Qt.AlignCenter)
-            self.customers.setItem(i,4,item_room)
-            self.customers.setItem(i,5,item_status)
-            self.customers.setItem(i,6,item_ci)
-            self.customers.setItem(i,7,item_co)
+            self.customers.setItem(i,6,item_room)
+            self.customers.setItem(i,7,item_status)
+            self.customers.setItem(i,8,item_ci)
+            self.customers.setItem(i,9,item_co)
         self.customer_orders.setRowCount(0) # Clear orders when customers are refreshed
 
     def filter_by_date(self):
@@ -359,6 +368,7 @@ class GuestView(QWidget):
         try:
             cur.execute("""
                 SELECT c.id AS id, c.name AS name, c.phone AS phone, c.email AS email,
+                       c.document_type AS doc_type, c.document_number AS doc_number,
                        r.room_id AS room_id, rm.number AS current_room, r.status AS res_status,
                        r.check_in AS check_in, r.check_out AS check_out
                 FROM Customers c
@@ -378,6 +388,8 @@ class GuestView(QWidget):
                 self.customers.setItem(i, 1, QTableWidgetItem(r["name"] or ""))
                 self.customers.setItem(i, 2, QTableWidgetItem(r["phone"] or ""))
                 self.customers.setItem(i, 3, QTableWidgetItem(r["email"] or ""))
+                self.customers.setItem(i, 4, QTableWidgetItem(r["doc_type"] or ""))
+                self.customers.setItem(i, 5, QTableWidgetItem(r["doc_number"] or ""))
 
                 item_room = QTableWidgetItem(r["current_room"] or "")
                 item_room.setTextAlignment(Qt.AlignCenter)
@@ -390,10 +402,10 @@ class GuestView(QWidget):
                 item_co = QTableWidgetItem(check_out_str)
                 item_co.setTextAlignment(Qt.AlignCenter)
 
-                self.customers.setItem(i, 4, item_room)
-                self.customers.setItem(i, 5, item_status)
-                self.customers.setItem(i, 6, item_ci)
-                self.customers.setItem(i, 7, item_co)
+                self.customers.setItem(i, 6, item_room)
+                self.customers.setItem(i, 7, item_status)
+                self.customers.setItem(i, 8, item_ci)
+                self.customers.setItem(i, 9, item_co)
 
             self.is_date_filtered = True
             self.customer_orders.setRowCount(0) # Clear orders when filter is applied
@@ -456,10 +468,16 @@ class GuestView(QWidget):
                 return
             conn = self.controller.db.connect()
             cur = conn.cursor()
-            cur.execute("INSERT INTO Customers(name,phone,email) VALUES(?,?,?)",
-                        (dlg.name.text().strip(), dlg.phone.text().strip(), dlg.email.text().strip()))
-            conn.commit()
-            self.refresh_customers()
+            try:
+                cur.execute("INSERT INTO Customers(name,phone,email,document_type,document_number) VALUES(?,?,?,?,?)",
+                            (dlg.name.text().strip(), dlg.phone.text().strip(), dlg.email.text().strip(), dlg.document_type.currentText(), dlg.document_number.text().strip()))
+                conn.commit()
+                MessageBox.success(self, "Customer Added", f"Customer '{dlg.name.text().strip()}' has been added successfully!\n\nNow use the 'Check-in' button to add them to the active guests list.")
+                self.refresh_customers()
+            except Exception as e:
+                conn.rollback()
+                MessageBox.error(self, "Error", f"Failed to add customer: {str(e)}")
+                return
 
     def _on_customer_selection_changed(self):
         row = self.customers.currentRow()
@@ -481,11 +499,13 @@ class GuestView(QWidget):
         dlg.name.setText(self.customers.item(row,1).text())
         dlg.phone.setText(self.customers.item(row,2).text())
         dlg.email.setText(self.customers.item(row,3).text())
+        dlg.document_type.setCurrentText(self.customers.item(row,4).text())
+        dlg.document_number.setText(self.customers.item(row,5).text())
         if dlg.exec():
             conn = self.controller.db.connect()
             cur = conn.cursor()
-            cur.execute("UPDATE Customers SET name=?, phone=?, email=? WHERE id=?",
-                        (dlg.name.text().strip(), dlg.phone.text().strip(), dlg.email.text().strip(), cust_id))
+            cur.execute("UPDATE Customers SET name=?, phone=?, email=?, document_type=?, document_number=? WHERE id=?",
+                        (dlg.name.text().strip(), dlg.phone.text().strip(), dlg.email.text().strip(), dlg.document_type.currentText(), dlg.document_number.text().strip(), cust_id))
             conn.commit()
             self.refresh_customers()
             MessageBox.success(self, "Customer Updated", "Customer information has been updated successfully!")
@@ -513,15 +533,15 @@ class GuestView(QWidget):
     def export_customers_csv(self):
         conn = self.controller.db.connect()
         cur = conn.cursor()
-        cur.execute("SELECT id,name,phone,email FROM Customers ORDER BY id DESC")
+        cur.execute("SELECT id,name,phone,email,document_type,document_number FROM Customers ORDER BY id DESC")
         rows = cur.fetchall()
         app_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
         path = os.path.join(app_dir, "customers_export.csv")
         with open(path, "w", newline="", encoding="utf-8") as f:
             w = csv.writer(f)
-            w.writerow(["ID","Name","Phone","Email"])
+            w.writerow(["ID","Name","Phone","Email","Document Type","Document Number"])
             for r in rows:
-                w.writerow([r["id"], r["name"], r["phone"] or "", r["email"] or ""])
+                w.writerow([r["id"], r["name"], r["phone"] or "", r["email"] or "", r["document_type"] or "", r["document_number"] or ""])
         MessageBox.info(self, "Export Complete", f"Exported {len(rows)} customers to customers_export.csv")
 
     def customer_check_in(self):
@@ -531,7 +551,8 @@ class GuestView(QWidget):
             return
         cust_id = int(self.customers.item(row,0).text())
         dlg = CustomerCheckinDialog(self, self.controller.db)
-        dlg.check_in.setText(datetime.date.today().isoformat())
+        from PySide6.QtCore import QDate
+        dlg.check_in.setDate(QDate.currentDate())
         
         # Check if all rooms are occupied
         if dlg.all_rooms_occupied:

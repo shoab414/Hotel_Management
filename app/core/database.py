@@ -94,7 +94,9 @@ class DatabaseManager:
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 name TEXT NOT NULL,
                 phone TEXT,
-                email TEXT
+                email TEXT,
+                document_type TEXT,
+                document_number TEXT
             )
         """)
 
@@ -242,6 +244,18 @@ class DatabaseManager:
         """
         connection = self.conn
         cursor = connection.cursor()
+        
+        # Check if document columns exist in Customers table
+        cursor.execute("PRAGMA table_info(Customers)")
+        columns = [row[1] for row in cursor.fetchall()]
+        
+        if "document_type" not in columns:
+            cursor.execute("ALTER TABLE Customers ADD COLUMN document_type TEXT")
+            connection.commit()
+        
+        if "document_number" not in columns:
+            cursor.execute("ALTER TABLE Customers ADD COLUMN document_number TEXT")
+            connection.commit()
         
         # Check if price column exists in Inventory table
         cursor.execute("PRAGMA table_info(Inventory)")

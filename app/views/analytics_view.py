@@ -22,6 +22,8 @@ class AnalyticsView(QWidget):
         self._setup_weekly()
         self._setup_monthly()
         self._setup_dishes()
+        self._setup_hotel_report()
+        self._setup_guest_report()
 
     def _setup_daily(self):
         w = QWidget()
@@ -194,3 +196,219 @@ class AnalyticsView(QWidget):
             self.dishes_table.setItem(0, 0, QTableWidgetItem("-"))
             self.dishes_table.setItem(0, 1, QTableWidgetItem("No data for selected date"))
             self.dishes_table.setItem(0, 2, QTableWidgetItem("0"))
+    def _setup_hotel_report(self):
+        w = QWidget()
+        layout = QVBoxLayout(w)
+        
+        # Date range filter
+        filter_bar = QHBoxLayout()
+        filter_bar.addWidget(QLabel("From:"))
+        self.hotel_date_from = QDateEdit()
+        self.hotel_date_from.setCalendarPopup(True)
+        self.hotel_date_from.setDisplayFormat('yyyy-MM-dd')
+        self.hotel_date_from.setDate(QDate.currentDate().addDays(-30))
+        self.hotel_date_from.setMinimumWidth(140)
+        apply_calendar_icon(self.hotel_date_from)
+        filter_bar.addWidget(self.hotel_date_from)
+        
+        filter_bar.addWidget(QLabel("To:"))
+        self.hotel_date_to = QDateEdit()
+        self.hotel_date_to.setCalendarPopup(True)
+        self.hotel_date_to.setDisplayFormat('yyyy-MM-dd')
+        self.hotel_date_to.setDate(QDate.currentDate())
+        self.hotel_date_to.setMinimumWidth(140)
+        apply_calendar_icon(self.hotel_date_to)
+        filter_bar.addWidget(self.hotel_date_to)
+        
+        self.hotel_refresh = QPushButton("Refresh")
+        filter_bar.addWidget(self.hotel_refresh)
+        filter_bar.addStretch()
+        layout.addLayout(filter_bar)
+        
+        # Hotel statistics table
+        self.hotel_stats_table = QTableWidget(0, 6)
+        self.hotel_stats_table.setHorizontalHeaderLabels(["Room Number", "Category", "Reservations", "Revenue (₹)", "Occupancy %", "Status"])
+        self.hotel_stats_table.setMaximumHeight(300)
+        layout.addWidget(QLabel("Room-wise Report"))
+        layout.addWidget(self.hotel_stats_table)
+        
+        # Summary info
+        self.hotel_summary_layout = QHBoxLayout()
+        self.hotel_total_revenue = QLabel("Total Hotel Revenue: ₹0.00")
+        self.hotel_total_revenue.setObjectName("StatValue")
+        self.hotel_occupancy_rate = QLabel("Average Occupancy: 0%")
+        self.hotel_occupancy_rate.setObjectName("StatValue")
+        self.hotel_total_reservations = QLabel("Total Reservations: 0")
+        self.hotel_total_reservations.setObjectName("StatValue")
+        
+        self.hotel_summary_layout.addWidget(self.hotel_total_revenue)
+        self.hotel_summary_layout.addWidget(self.hotel_occupancy_rate)
+        self.hotel_summary_layout.addWidget(self.hotel_total_reservations)
+        self.hotel_summary_layout.addStretch()
+        layout.addLayout(self.hotel_summary_layout)
+        
+        self.hotel_refresh.clicked.connect(self._refresh_hotel_report)
+        self.hotel_date_from.dateChanged.connect(self._refresh_hotel_report)
+        self.hotel_date_to.dateChanged.connect(self._refresh_hotel_report)
+        self.tabs.addTab(w, "Hotel Report")
+        self._refresh_hotel_report()
+
+    def _setup_guest_report(self):
+        w = QWidget()
+        layout = QVBoxLayout(w)
+        
+        # Date range filter
+        filter_bar = QHBoxLayout()
+        filter_bar.addWidget(QLabel("From:"))
+        self.guest_date_from = QDateEdit()
+        self.guest_date_from.setCalendarPopup(True)
+        self.guest_date_from.setDisplayFormat('yyyy-MM-dd')
+        self.guest_date_from.setDate(QDate.currentDate().addDays(-30))
+        self.guest_date_from.setMinimumWidth(140)
+        apply_calendar_icon(self.guest_date_from)
+        filter_bar.addWidget(self.guest_date_from)
+        
+        filter_bar.addWidget(QLabel("To:"))
+        self.guest_date_to = QDateEdit()
+        self.guest_date_to.setCalendarPopup(True)
+        self.guest_date_to.setDisplayFormat('yyyy-MM-dd')
+        self.guest_date_to.setDate(QDate.currentDate())
+        self.guest_date_to.setMinimumWidth(140)
+        apply_calendar_icon(self.guest_date_to)
+        filter_bar.addWidget(self.guest_date_to)
+        
+        self.guest_refresh = QPushButton("Refresh")
+        filter_bar.addWidget(self.guest_refresh)
+        filter_bar.addStretch()
+        layout.addLayout(filter_bar)
+        
+        # Guest details table
+        self.guest_table = QTableWidget(0, 8)
+        self.guest_table.setHorizontalHeaderLabels(["Guest Name", "Phone", "Email", "Document Type", "Document Number", "Check-in", "Check-out", "Room"])
+        layout.addWidget(QLabel("Guest Check-in Report"))
+        layout.addWidget(self.guest_table, 1)
+        
+        # Summary info
+        self.guest_summary_layout = QHBoxLayout()
+        self.guest_total_checkins = QLabel("Total Check-ins: 0")
+        self.guest_total_checkins.setObjectName("StatValue")
+        self.guest_verified = QLabel("Document Verified: 0")
+        self.guest_verified.setObjectName("StatValue")
+        self.guest_avg_stay = QLabel("Average Stay: 0 days")
+        self.guest_avg_stay.setObjectName("StatValue")
+        
+        self.guest_summary_layout.addWidget(self.guest_total_checkins)
+        self.guest_summary_layout.addWidget(self.guest_verified)
+        self.guest_summary_layout.addWidget(self.guest_avg_stay)
+        self.guest_summary_layout.addStretch()
+        layout.addLayout(self.guest_summary_layout)
+        
+        self.guest_refresh.clicked.connect(self._refresh_guest_report)
+        self.guest_date_from.dateChanged.connect(self._refresh_guest_report)
+        self.guest_date_to.dateChanged.connect(self._refresh_guest_report)
+        self.tabs.addTab(w, "Guest Report")
+        self._refresh_guest_report()
+
+    def _refresh_hotel_report(self):
+        conn = self.controller.db.connect()
+        cur = conn.cursor()
+        
+        date_from = self.hotel_date_from.date().toString('yyyy-MM-dd')
+        date_to = self.hotel_date_to.date().toString('yyyy-MM-dd')
+        
+        # Get all rooms with their reservation and revenue data
+        cur.execute("""
+            SELECT r.id, r.number, r.category, r.status, r.rate,
+                   COUNT(DISTINCT res.id) as reservation_count,
+                   COALESCE(SUM(Payments.amount + Payments.gst), 0) as total_revenue
+            FROM Rooms r
+            LEFT JOIN Reservations res ON res.room_id = r.id 
+                AND DATE(res.check_in) >= ? AND DATE(res.check_in) <= ?
+            LEFT JOIN Payments ON Payments.reservation_id = res.id
+            GROUP BY r.id, r.number, r.category, r.status, r.rate
+            ORDER BY r.number
+        """, (date_from, date_to))
+        
+        rooms = cur.fetchall()
+        self.hotel_stats_table.setRowCount(len(rooms))
+        
+        total_revenue = 0
+        total_reservations = 0
+        total_days = (self.hotel_date_to.date().toPython() - self.hotel_date_from.date().toPython()).days + 1
+        
+        for i, room in enumerate(rooms):
+            res_count = room['reservation_count'] or 0
+            revenue = float(room['total_revenue'] or 0)
+            total_revenue += revenue
+            total_reservations += res_count
+            
+            # Calculate occupancy percentage
+            occupancy = (res_count * 100 / total_days) if total_days > 0 else 0
+            
+            self.hotel_stats_table.setItem(i, 0, QTableWidgetItem(room['number']))
+            self.hotel_stats_table.setItem(i, 1, QTableWidgetItem(room['category']))
+            self.hotel_stats_table.setItem(i, 2, QTableWidgetItem(str(res_count)))
+            self.hotel_stats_table.setItem(i, 3, QTableWidgetItem(f"₹{revenue:.2f}"))
+            self.hotel_stats_table.setItem(i, 4, QTableWidgetItem(f"{occupancy:.1f}%"))
+            self.hotel_stats_table.setItem(i, 5, QTableWidgetItem(room['status']))
+        
+        # Update summary
+        total_occupancy = (total_reservations * 100 / (len(rooms) * total_days)) if (len(rooms) * total_days) > 0 else 0
+        self.hotel_total_revenue.setText(f"Total Hotel Revenue: ₹{total_revenue:.2f}")
+        self.hotel_occupancy_rate.setText(f"Average Occupancy: {total_occupancy:.1f}%")
+        self.hotel_total_reservations.setText(f"Total Reservations: {total_reservations}")
+
+    def _refresh_guest_report(self):
+        conn = self.controller.db.connect()
+        cur = conn.cursor()
+        
+        date_from = self.guest_date_from.date().toString('yyyy-MM-dd')
+        date_to = self.guest_date_to.date().toString('yyyy-MM-dd')
+        
+        # Get guest check-in details with document information
+        cur.execute("""
+            SELECT 
+                c.name, c.phone, c.email, c.document_type, c.document_number,
+                res.check_in, res.check_out, rm.number as room_number,
+                CAST(JULIANDAY(COALESCE(res.check_out, 'now')) - JULIANDAY(res.check_in) AS INTEGER) as stay_days
+            FROM Reservations res
+            JOIN Customers c ON res.customer_id = c.id
+            LEFT JOIN Rooms rm ON res.room_id = rm.id
+            WHERE res.status IN ('CheckedIn', 'CheckedOut')
+                AND DATE(res.check_in) >= ? AND DATE(res.check_in) <= ?
+            ORDER BY res.check_in DESC
+        """, (date_from, date_to))
+        
+        guests = cur.fetchall()
+        self.guest_table.setRowCount(len(guests))
+        
+        total_guests = 0
+        verified_guests = 0
+        total_stay_days = 0
+        
+        for i, guest in enumerate(guests):
+            total_guests += 1
+            if guest['document_type'] and guest['document_number']:
+                verified_guests += 1
+            
+            stay_days = guest['stay_days'] or 0
+            total_stay_days += stay_days
+            
+            self.guest_table.setItem(i, 0, QTableWidgetItem(guest['name'] or ""))
+            self.guest_table.setItem(i, 1, QTableWidgetItem(guest['phone'] or ""))
+            self.guest_table.setItem(i, 2, QTableWidgetItem(guest['email'] or ""))
+            self.guest_table.setItem(i, 3, QTableWidgetItem(guest['document_type'] or ""))
+            self.guest_table.setItem(i, 4, QTableWidgetItem(guest['document_number'] or ""))
+            self.guest_table.setItem(i, 5, QTableWidgetItem(guest['check_in'] or ""))
+            self.guest_table.setItem(i, 6, QTableWidgetItem(guest['check_out'] or ""))
+            self.guest_table.setItem(i, 7, QTableWidgetItem(guest['room_number'] or ""))
+        
+        # Update summary
+        avg_stay = (total_stay_days / total_guests) if total_guests > 0 else 0
+        self.guest_total_checkins.setText(f"Total Check-ins: {total_guests}")
+        self.guest_verified.setText(f"Document Verified: {verified_guests}")
+        self.guest_avg_stay.setText(f"Average Stay: {avg_stay:.1f} days")
+        
+        if not guests:
+            self.guest_table.setRowCount(1)
+            self.guest_table.setItem(0, 0, QTableWidgetItem("No data for selected date range"))

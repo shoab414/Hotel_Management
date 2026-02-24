@@ -77,7 +77,7 @@ class BillingView(QWidget):
             SELECT 
                 Payments.id AS payment_id,
                 Orders.id AS order_id,
-                COALESCE(Tables.number, 'N/A') AS table_num,
+                COALESCE(Tables.number, COALESCE(Rooms.number, 'N/A')) AS table_num,
                 Payments.paid_at AS payment_date,
                 Payments.amount,
                 Payments.gst,
@@ -85,6 +85,10 @@ class BillingView(QWidget):
             FROM Payments
             JOIN Orders ON Payments.order_id = Orders.id
             LEFT JOIN Tables ON Orders.table_id = Tables.id
+            LEFT JOIN Customers ON Orders.customer_id = Customers.id
+            LEFT JOIN Reservations ON Reservations.customer_id = Customers.id 
+                AND Reservations.status IN ('CheckedIn', 'Reserved')
+            LEFT JOIN Rooms ON Reservations.room_id = Rooms.id
         """
 
         where_clauses = []
@@ -116,7 +120,7 @@ class BillingView(QWidget):
             self.orders.setItem(i, 0, QTableWidgetItem(str(p["payment_id"])))
             # Order ID
             self.orders.setItem(i, 1, QTableWidgetItem(str(p["order_id"])))
-            # Table
+            # Table or Room
             self.orders.setItem(i, 2, QTableWidgetItem(str(p["table_num"])))
             # Date
             self.orders.setItem(i, 3, QTableWidgetItem(p["payment_date"]))
