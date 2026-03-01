@@ -13,12 +13,15 @@ class AddOrderDialog(QDialog):
         self.table_id = table_id
         self.controller = controller
         self.setWindowTitle(f"Add Order for Table {self.get_table_number(table_id)}")
-        self.setMinimumSize(1000, 800)
+        self.setMinimumSize(1200, 900)
+        self.resize(1200, 900)
 
         self.selected_items = {} # {menu_item_id: quantity}
         self.category_lists = {} # {category: QListWidget}
 
         self.layout = QVBoxLayout(self)
+        self.layout.setSpacing(10)
+        self.layout.setContentsMargins(15, 15, 15, 15)
 
         self.title_label = QLabel(f"Add New Order for Table {self.get_table_number(table_id)}")
         self.title_label.setObjectName("PageTitle")
@@ -36,6 +39,7 @@ class AddOrderDialog(QDialog):
         # Left side - Menu tabs
         menu_container = QWidget()
         menu_layout = QVBoxLayout(menu_container)
+        menu_layout.setSpacing(8)
         menu_label = QLabel("Available Items:")
         menu_label_font = QFont()
         menu_label_font.setBold(True)
@@ -51,6 +55,8 @@ class AddOrderDialog(QDialog):
         selected_container = QFrame()
         selected_container.setFrameStyle(QFrame.StyledPanel | QFrame.Sunken)
         selected_layout = QVBoxLayout(selected_container)
+        selected_layout.setSpacing(8)
+        selected_layout.setContentsMargins(10, 10, 10, 10)
 
         self.selected_items_label = QLabel("Selected Items:")
         selected_label_font = QFont()
@@ -60,15 +66,16 @@ class AddOrderDialog(QDialog):
         selected_layout.addWidget(self.selected_items_label)
 
         self.selected_items_list = QListWidget()
-        self.selected_items_list.setMinimumWidth(280)
-        self.selected_items_list.setSpacing(5)
+        self.selected_items_list.setMinimumWidth(350)
+        self.selected_items_list.setSpacing(8)
         selected_layout.addWidget(self.selected_items_list)
 
         # Summary section
         summary_frame = QFrame()
         summary_frame.setFrameStyle(QFrame.StyledPanel)
         summary_layout = QVBoxLayout(summary_frame)
-        summary_layout.setContentsMargins(5, 5, 5, 5)
+        summary_layout.setContentsMargins(10, 10, 10, 10)
+        summary_layout.setSpacing(8)
 
         self.summary_label = QLabel("Total Items: 0")
         self.summary_label.setFont(QFont("Arial", 9))
@@ -89,6 +96,8 @@ class AddOrderDialog(QDialog):
 
         # Buttons
         self.button_layout = QHBoxLayout()
+        self.button_layout.setSpacing(10)
+        self.button_layout.setContentsMargins(0, 10, 0, 0)
         self.btn_add_to_order = QPushButton("Add Selected to Order")
         self.btn_add_to_order.setObjectName("PrimaryButton")
         self.btn_add_to_order.clicked.connect(self.add_item_to_order)
