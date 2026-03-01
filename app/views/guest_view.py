@@ -1,11 +1,9 @@
-from PySide6.QtWidgets import QWidget, QVBoxLayout, QHBoxLayout, QPushButton, QTableWidget, QTableWidgetItem, QComboBox, QLineEdit, QSpinBox, QDialog, QFormLayout, QLabel, QTabWidget, QGridLayout, QMessageBox, QHeaderView, QListWidget, QListWidgetItem, QDoubleSpinBox, QDateEdit
-from PySide6.QtCore import Qt, QDate
+from PySide6.QtWidgets import QWidget, QVBoxLayout, QHBoxLayout, QPushButton, QTableWidget, QTableWidgetItem, QComboBox, QLineEdit, QSpinBox, QDialog, QFormLayout, QLabel, QTabWidget, QGridLayout, QMessageBox, QHeaderView, QListWidget, QListWidgetItem, QDoubleSpinBox
+from PySide6.QtCore import Qt
 import datetime
 import logging
 import csv, os
 from app.utils.message import MessageBox # Assuming MessageBox is in utils
-from app.utils.calendar_icon import apply_calendar_icon
-from .checkout_dialog import CheckoutDialog
 
 class CustomerDialog(QDialog):
     def __init__(self, parent=None):
@@ -15,16 +13,11 @@ class CustomerDialog(QDialog):
         self.name = QLineEdit()
         self.phone = QLineEdit()
         self.email = QLineEdit()
-        self.document_type = QComboBox()
-        self.document_type.addItems(["", "Aadhar Card", "PAN Card", "Passport", "Driving License", "Voter ID", "Other"])
-        self.document_number = QLineEdit()
         ok = QPushButton("Save")
         ok.clicked.connect(self.accept)
         f.addRow("Name", self.name)
         f.addRow("Phone", self.phone)
         f.addRow("Email", self.email)
-        f.addRow("Document Type", self.document_type)
-        f.addRow("Document Number", self.document_number)
         f.addRow(ok)
 
 class CustomerCheckinDialog(QDialog):
@@ -32,59 +25,54 @@ class CustomerCheckinDialog(QDialog):
         super().__init__(parent)
         self.setWindowTitle("Customer Check-in")
         self.db = db
-        self.all_rooms_occupied = False
         f = QFormLayout(self)
         self.room = QComboBox()
         self.room.setMinimumWidth(200)
-        from PySide6.QtWidgets import QDateEdit, QCheckBox
-        from PySide6.QtCore import QDate
-
-        self.check_in = QDateEdit()
-        self.check_in.setCalendarPopup(True)
-        self.check_in.setDisplayFormat('yyyy-MM-dd')
-        self.check_in.setDate(QDate.currentDate())
-        self.check_in.setToolTip("Click the calendar icon to select check-in date")
-        apply_calendar_icon(self.check_in)
-
-        self.check_out = QDateEdit()
-        self.check_out.setCalendarPopup(True)
-        self.check_out.setDisplayFormat('yyyy-MM-dd')
-        self.check_out.setDate(QDate.currentDate().addDays(1))
-        self.check_out.setToolTip("Click the calendar icon to select check-out date")
-        apply_calendar_icon(self.check_out)
-        self.no_checkout = QCheckBox("Open-ended (no check-out)")
+        self.check_in = QLineEdit()
+        self.check_out = QLineEdit()
         ok = QPushButton("Check-in")
         ok.clicked.connect(self.accept)
         f.addRow("Room", self.room)
         f.addRow("Check-in (YYYY-MM-DD)", self.check_in)
         f.addRow("Planned Check-out (YYYY-MM-DD)", self.check_out)
-        f.addRow("", self.no_checkout)
         f.addRow(ok)
         if db:
             self._load_available_rooms()
 
-    def get_check_in(self):
-        return self.check_in.date().toString('yyyy-MM-dd')
+    def _load_available_rooms(self):
+        conn = self.db.connect()
+        cur = conn.cursor()
+        cur.execute("SELECT number, category, rate FROM Rooms WHERE status='Available' ORDER BY number")
+        self.room.clear()
+        for r in cur.fetchall():
+            self.room.addItem(f"{r['number']} ({r['category']} - ₹{r['rate']:.0f})", r["number"])
 
-    def get_check_out(self):
-        if self.no_checkout.isChecked():
-            return None
-        return self.check_out.date().toString('yyyy-MM-dd')
+class CustomerCheckinDialog(QDialog):
+    def __init__(self, parent=None, db=None):
+        super().__init__(parent)
+        self.setWindowTitle("Customer Check-in")
+        self.db = db
+        f = QFormLayout(self)
+        self.room = QComboBox()
+        self.room.setMinimumWidth(200)
+        self.check_in = QLineEdit()
+        self.check_out = QLineEdit()
+        ok = QPushButton("Check-in")
+        ok.clicked.connect(self.accept)
+        f.addRow("Room", self.room)
+        f.addRow("Check-in (YYYY-MM-DD)", self.check_in)
+        f.addRow("Planned Check-out (YYYY-MM-DD)", self.check_out)
+        f.addRow(ok)
+        if db:
+            self._load_available_rooms()
 
     def _load_available_rooms(self):
         conn = self.db.connect()
         cur = conn.cursor()
-        cur.execute("SELECT id, number, category, rate FROM Rooms WHERE status='Available' ORDER BY number")
+        cur.execute("SELECT number, category, rate FROM Rooms WHERE status='Available' ORDER BY number")
         self.room.clear()
-        rows = cur.fetchall()
-        if not rows:
-            # No rooms available - provide an explicit waitlist/no-room option
-            self.room.addItem("❌ No Room Available", None)
-            self.all_rooms_occupied = True
-            return
-        self.all_rooms_occupied = False
-        for r in rows:
-            self.room.addItem(f"{r['number']} ({r['category']} - ₹{r['rate']:.0f})", r["id"])
+        for r in cur.fetchall():
+            self.room.addItem(f"{r['number']} ({r['category']} - ₹{r['rate']:.0f})", r["number"])
 
 class AddCustomerOrderDialog(QDialog):
     def __init__(self, parent=None, db=None):
@@ -212,50 +200,8 @@ class GuestView(QWidget):
         cust_bar.addWidget(self.btn_export_cust)
         cust_layout.addLayout(cust_bar)
 
-        # Date Filter Section
-        date_filter_layout = QHBoxLayout()
-        date_filter_layout.setSpacing(10)
-
-        date_filter_label = QLabel("Filter by Date:")
-        date_filter_label.setObjectName("FilterLabel")
-        date_filter_layout.addWidget(date_filter_label)
-
-        from_label = QLabel("From:")
-        self.date_from = QDateEdit()
-        self.date_from.setCalendarPopup(True)
-        self.date_from.setDisplayFormat('yyyy-MM-dd')
-        self.date_from.setDate(QDate.currentDate())
-        self.date_from.setMinimumWidth(140)
-        self.date_from.setToolTip("Click the calendar icon to open date picker")
-        apply_calendar_icon(self.date_from)
-
-        to_label = QLabel("To:")
-        self.date_to = QDateEdit()
-        self.date_to.setCalendarPopup(True)
-        self.date_to.setDisplayFormat('yyyy-MM-dd')
-        self.date_to.setDate(QDate.currentDate())
-        self.date_to.setMinimumWidth(140)
-        self.date_to.setToolTip("Click the calendar icon to open date picker")
-        apply_calendar_icon(self.date_to)
-
-        self.btn_filter_by_date = QPushButton("Filter by Date")
-        self.btn_filter_by_date.setObjectName("PrimaryButton")
-
-        self.btn_clear_filter = QPushButton("Clear Filter")
-        self.btn_clear_filter.setObjectName("SecondaryButton")
-
-        date_filter_layout.addWidget(from_label)
-        date_filter_layout.addWidget(self.date_from)
-        date_filter_layout.addWidget(to_label)
-        date_filter_layout.addWidget(self.date_to)
-        date_filter_layout.addWidget(self.btn_filter_by_date)
-        date_filter_layout.addWidget(self.btn_clear_filter)
-        date_filter_layout.addStretch()
-
-        cust_layout.addLayout(date_filter_layout)
-
-        self.customers = QTableWidget(0, 10)
-        self.customers.setHorizontalHeaderLabels(["ID","Name","Phone","Email","Doc Type","Document Number","Current Room","Res Status","Check-in","Check-out"])
+        self.customers = QTableWidget(0, 6)
+        self.customers.setHorizontalHeaderLabels(["ID","Name","Phone","Email","Current Room","Res Status"])
         self.customers.setSelectionBehavior(QTableWidget.SelectRows) # Select entire rows
         self.customers.setEditTriggers(QTableWidget.NoEditTriggers) # Make table read-only
         self.customers.horizontalHeader().setStretchLastSection(True) # Stretch last column
@@ -273,7 +219,8 @@ class GuestView(QWidget):
         self.customer_orders.setEditTriggers(QTableWidget.NoEditTriggers)
         self.customer_orders.horizontalHeader().setStretchLastSection(True)
         self.customer_orders.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeToContents)
-        self.customer_orders.verticalHeader().setSectionResizeMode(QHeaderView.ResizeToContents)
+        self.customer_orders.setFixedWidth(700)
+        self.customer_orders.setFixedHeight(250)
         cust_layout.addWidget(self.customer_orders)
 
         self.btn_add_cust.clicked.connect(self.add_customer)
@@ -284,51 +231,38 @@ class GuestView(QWidget):
         self.customer_search.textChanged.connect(self.refresh_customers)
         self.btn_export_cust.clicked.connect(self.export_customers_csv)
         self.btn_add_order.clicked.connect(self.add_customer_order)
-        self.btn_filter_by_date.clicked.connect(self.filter_by_date)
-        self.btn_clear_filter.clicked.connect(self.clear_date_filter)
         self.customers.itemSelectionChanged.connect(self._on_customer_selection_changed)
-
-        # Track filter state
-        self.is_date_filtered = False
-
         self.refresh_customers()
 
     def refresh_customers(self):
-        """Show only currently checked-in guests. Hide reserved and checked-out."""
+        """Show only active guests (Reserved/CheckedIn) or customers with no reservations. Hide checked-out."""
         term = self.customer_search.text().strip()
         conn = self.controller.db.connect()
         cur = conn.cursor()
-        # Show customers with active stays (CheckedIn or Reserved for today/future)
         if term:
             like = f"%{term}%"
             cur.execute("""
                 SELECT c.id AS id, c.name AS name, c.phone AS phone, c.email AS email,
-                       c.document_type AS doc_type, c.document_number AS doc_number,
-                       r.room_id AS room_id, rm.number AS current_room, r.status AS res_status,
-                       r.check_in AS check_in, r.check_out AS check_out
+                       r.room_id AS room_id, rm.number AS current_room, r.status AS res_status
                 FROM Customers c
-                INNER JOIN Reservations r ON r.customer_id = c.id
+                LEFT JOIN Reservations r ON r.id = (
+                    SELECT id FROM Reservations WHERE customer_id=c.id AND status IN ('Reserved','CheckedIn') ORDER BY id DESC LIMIT 1
+                )
                 LEFT JOIN Rooms rm ON rm.id = r.room_id
                 WHERE (c.name LIKE ? OR c.phone LIKE ? OR c.email LIKE ?)
-                  AND (
-                        r.status = 'CheckedIn'
-                        OR (r.status = 'Reserved' AND DATE(r.check_in) <= DATE('now'))
-                      )
+                AND (r.id IS NOT NULL OR c.id NOT IN (SELECT customer_id FROM Reservations))
                 ORDER BY c.id DESC
             """, (like, like, like))
         else:
             cur.execute("""
                 SELECT c.id AS id, c.name AS name, c.phone AS phone, c.email AS email,
-                       c.document_type AS doc_type, c.document_number AS doc_number,
-                       r.room_id AS room_id, rm.number AS current_room, r.status AS res_status,
-                       r.check_in AS check_in, r.check_out AS check_out
+                       r.room_id AS room_id, rm.number AS current_room, r.status AS res_status
                 FROM Customers c
-                INNER JOIN Reservations r ON r.customer_id = c.id
+                LEFT JOIN Reservations r ON r.id = (
+                    SELECT id FROM Reservations WHERE customer_id=c.id AND status IN ('Reserved','CheckedIn') ORDER BY id DESC LIMIT 1
+                )
                 LEFT JOIN Rooms rm ON rm.id = r.room_id
-                WHERE (
-                        r.status = 'CheckedIn'
-                        OR (r.status = 'Reserved' AND DATE(r.check_in) <= DATE('now'))
-                      )
+                WHERE r.id IS NOT NULL OR c.id NOT IN (SELECT customer_id FROM Reservations)
                 ORDER BY c.id DESC
             """)
         rows = cur.fetchall()
@@ -338,88 +272,9 @@ class GuestView(QWidget):
             self.customers.setItem(i,1,QTableWidgetItem(r["name"] or ""))
             self.customers.setItem(i,2,QTableWidgetItem(r["phone"] or ""))
             self.customers.setItem(i,3,QTableWidgetItem(r["email"] or ""))
-            self.customers.setItem(i,4,QTableWidgetItem(r["doc_type"] or ""))
-            self.customers.setItem(i,5,QTableWidgetItem(r["doc_number"] or ""))
-            # Normalize and align room/status/date columns for readability
-            item_room = QTableWidgetItem(r["current_room"] or "")
-            item_room.setTextAlignment(Qt.AlignCenter)
-            item_status = QTableWidgetItem(r["res_status"] or "")
-            item_status.setTextAlignment(Qt.AlignCenter)
-            check_in_str = r["check_in"] or ""
-            check_out_str = r["check_out"] or ""
-            item_ci = QTableWidgetItem(check_in_str)
-            item_ci.setTextAlignment(Qt.AlignCenter)
-            item_co = QTableWidgetItem(check_out_str)
-            item_co.setTextAlignment(Qt.AlignCenter)
-            self.customers.setItem(i,6,item_room)
-            self.customers.setItem(i,7,item_status)
-            self.customers.setItem(i,8,item_ci)
-            self.customers.setItem(i,9,item_co)
+            self.customers.setItem(i,4,QTableWidgetItem(r["current_room"] or ""))
+            self.customers.setItem(i,5,QTableWidgetItem(r["res_status"] or ""))
         self.customer_orders.setRowCount(0) # Clear orders when customers are refreshed
-
-    def filter_by_date(self):
-        """Filter customers by date range"""
-        date_from = self.date_from.date().toString('yyyy-MM-dd')
-        date_to = self.date_to.date().toString('yyyy-MM-dd')
-
-        conn = self.controller.db.connect()
-        cur = conn.cursor()
-
-        try:
-            cur.execute("""
-                SELECT c.id AS id, c.name AS name, c.phone AS phone, c.email AS email,
-                       c.document_type AS doc_type, c.document_number AS doc_number,
-                       r.room_id AS room_id, rm.number AS current_room, r.status AS res_status,
-                       r.check_in AS check_in, r.check_out AS check_out
-                FROM Customers c
-                LEFT JOIN Reservations r ON r.customer_id = c.id
-                LEFT JOIN Rooms rm ON rm.id = r.room_id
-                WHERE (DATE(r.check_in) >= ? AND DATE(r.check_in) <= ?)
-                   OR (DATE(r.check_out) >= ? AND DATE(r.check_out) <= ?)
-                   OR (DATE(r.check_in) <= ? AND (DATE(r.check_out) >= ? OR r.check_out IS NULL))
-                ORDER BY r.check_in DESC, c.id DESC
-            """, (date_from, date_to, date_from, date_to, date_to, date_from))
-
-            rows = cur.fetchall()
-            self.customers.setRowCount(len(rows))
-
-            for i, r in enumerate(rows):
-                self.customers.setItem(i, 0, QTableWidgetItem(str(r["id"])))
-                self.customers.setItem(i, 1, QTableWidgetItem(r["name"] or ""))
-                self.customers.setItem(i, 2, QTableWidgetItem(r["phone"] or ""))
-                self.customers.setItem(i, 3, QTableWidgetItem(r["email"] or ""))
-                self.customers.setItem(i, 4, QTableWidgetItem(r["doc_type"] or ""))
-                self.customers.setItem(i, 5, QTableWidgetItem(r["doc_number"] or ""))
-
-                item_room = QTableWidgetItem(r["current_room"] or "")
-                item_room.setTextAlignment(Qt.AlignCenter)
-                item_status = QTableWidgetItem(r["res_status"] or "")
-                item_status.setTextAlignment(Qt.AlignCenter)
-                check_in_str = r["check_in"] or ""
-                check_out_str = r["check_out"] or ""
-                item_ci = QTableWidgetItem(check_in_str)
-                item_ci.setTextAlignment(Qt.AlignCenter)
-                item_co = QTableWidgetItem(check_out_str)
-                item_co.setTextAlignment(Qt.AlignCenter)
-
-                self.customers.setItem(i, 6, item_room)
-                self.customers.setItem(i, 7, item_status)
-                self.customers.setItem(i, 8, item_ci)
-                self.customers.setItem(i, 9, item_co)
-
-            self.is_date_filtered = True
-            self.customer_orders.setRowCount(0) # Clear orders when filter is applied
-            MessageBox.success(self, "Filter Applied", f"Found {len(rows)} customer(s) for the selected date range.")
-
-        except Exception as e:
-            logging.error(f"Error filtering customers by date: {e}", exc_info=True)
-            MessageBox.error(self, "Filter Error", f"Error filtering customers: {e}")
-
-    def clear_date_filter(self):
-        """Clear date filter and show active guests"""
-        self.is_date_filtered = False
-        self.refresh_customers()
-        MessageBox.success(self, "Filter Cleared", "Date filter cleared. Showing active guests.")
 
     def refresh_customer_orders(self, customer_id):
         self.customer_orders.setRowCount(0) # Clear existing orders
@@ -431,14 +286,15 @@ class GuestView(QWidget):
         cur.execute("""
             SELECT
                 o.id AS order_id,
-                o.created_at AS order_date,
+                o.order_date,
                 o.status,
-                SUM(od.qty * od.price) AS total_amount
+                SUM(oi.quantity * mi.price) AS total_amount
             FROM Orders o
-            JOIN OrderDetails od ON o.id = od.order_id
+            JOIN OrderItems oi ON o.id = oi.order_id
+            JOIN MenuItems mi ON oi.menu_item_id = mi.id
             WHERE o.customer_id = ?
-            GROUP BY o.id, o.created_at, o.status
-            ORDER BY o.created_at DESC, o.id DESC
+            GROUP BY o.id, o.order_date, o.status
+            ORDER BY o.order_date DESC, o.id DESC
         """, (customer_id,))
         orders = cur.fetchall()
 
@@ -451,10 +307,10 @@ class GuestView(QWidget):
 
             # Fetch and display order items for each order
             cur.execute("""
-                SELECT mi.name, od.qty AS quantity
-                FROM OrderDetails od
-                JOIN MenuItems mi ON od.item_id = mi.id
-                WHERE od.order_id = ?
+                SELECT mi.name, oi.quantity
+                FROM OrderItems oi
+                JOIN MenuItems mi ON oi.menu_item_id = mi.id
+                WHERE oi.order_id = ?
             """, (order["order_id"],))
             items = cur.fetchall()
             item_details = ", ".join([f"{item['name']} x{item['quantity']}" for item in items])
@@ -468,16 +324,10 @@ class GuestView(QWidget):
                 return
             conn = self.controller.db.connect()
             cur = conn.cursor()
-            try:
-                cur.execute("INSERT INTO Customers(name,phone,email,document_type,document_number) VALUES(?,?,?,?,?)",
-                            (dlg.name.text().strip(), dlg.phone.text().strip(), dlg.email.text().strip(), dlg.document_type.currentText(), dlg.document_number.text().strip()))
-                conn.commit()
-                MessageBox.success(self, "Customer Added", f"Customer '{dlg.name.text().strip()}' has been added successfully!\n\nNow use the 'Check-in' button to add them to the active guests list.")
-                self.refresh_customers()
-            except Exception as e:
-                conn.rollback()
-                MessageBox.error(self, "Error", f"Failed to add customer: {str(e)}")
-                return
+            cur.execute("INSERT INTO Customers(name,phone,email) VALUES(?,?,?)",
+                        (dlg.name.text().strip(), dlg.phone.text().strip(), dlg.email.text().strip()))
+            conn.commit()
+            self.refresh_customers()
 
     def _on_customer_selection_changed(self):
         row = self.customers.currentRow()
@@ -487,7 +337,18 @@ class GuestView(QWidget):
         else:
             self.refresh_customer_orders(None) # Clear orders if no customer is selected
 
-    
+    def refresh_customers(self):
+        self.customers.setRowCount(0)
+        conn = self.controller.db.connect()
+        cur = conn.cursor()
+        cur.execute("SELECT id, name, phone, email FROM Customers")
+        customers = cur.fetchall()
+        self.customers.setRowCount(len(customers))
+        for i, customer in enumerate(customers):
+            self.customers.setItem(i, 0, QTableWidgetItem(str(customer["id"])))
+            self.customers.setItem(i, 1, QTableWidgetItem(customer["name"]))
+            self.customers.setItem(i, 2, QTableWidgetItem(customer["phone"]))
+            self.customers.setItem(i, 3, QTableWidgetItem(customer["email"]))
 
     def edit_customer(self):
         row = self.customers.currentRow()
@@ -499,13 +360,11 @@ class GuestView(QWidget):
         dlg.name.setText(self.customers.item(row,1).text())
         dlg.phone.setText(self.customers.item(row,2).text())
         dlg.email.setText(self.customers.item(row,3).text())
-        dlg.document_type.setCurrentText(self.customers.item(row,4).text())
-        dlg.document_number.setText(self.customers.item(row,5).text())
         if dlg.exec():
             conn = self.controller.db.connect()
             cur = conn.cursor()
-            cur.execute("UPDATE Customers SET name=?, phone=?, email=?, document_type=?, document_number=? WHERE id=?",
-                        (dlg.name.text().strip(), dlg.phone.text().strip(), dlg.email.text().strip(), dlg.document_type.currentText(), dlg.document_number.text().strip(), cust_id))
+            cur.execute("UPDATE Customers SET name=?, phone=?, email=? WHERE id=?",
+                        (dlg.name.text().strip(), dlg.phone.text().strip(), dlg.email.text().strip(), cust_id))
             conn.commit()
             self.refresh_customers()
             MessageBox.success(self, "Customer Updated", "Customer information has been updated successfully!")
@@ -517,31 +376,25 @@ class GuestView(QWidget):
             return
         cust_id = int(self.customers.item(row,0).text())
         if MessageBox.confirm(self, "Confirm Deletion", "Are you sure you want to delete this customer? This action cannot be undone."):
-            try:
-                conn = self.controller.db.connect()
-                cur = conn.cursor()
-                # Enable foreign key constraints to ensure cascade delete works
-                cur.execute("PRAGMA foreign_keys = ON")
-                cur.execute("DELETE FROM Customers WHERE id=?", (cust_id,))
-                conn.commit()
-                self.refresh_customers()
-                MessageBox.success(self, "Customer Deleted", "Customer has been deleted successfully.")
-            except Exception as e:
-                logging.error(f"Error deleting customer {cust_id}: {str(e)}")
-                MessageBox.error(self, "Delete Failed", f"Error deleting customer: {str(e)}")
+            conn = self.controller.db.connect()
+            cur = conn.cursor()
+            cur.execute("DELETE FROM Customers WHERE id=?", (cust_id,))
+            conn.commit()
+            self.refresh_customers()
+            MessageBox.success(self, "Customer Deleted", "Customer has been deleted successfully.")
 
     def export_customers_csv(self):
         conn = self.controller.db.connect()
         cur = conn.cursor()
-        cur.execute("SELECT id,name,phone,email,document_type,document_number FROM Customers ORDER BY id DESC")
+        cur.execute("SELECT id,name,phone,email FROM Customers ORDER BY id DESC")
         rows = cur.fetchall()
         app_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
         path = os.path.join(app_dir, "customers_export.csv")
         with open(path, "w", newline="", encoding="utf-8") as f:
             w = csv.writer(f)
-            w.writerow(["ID","Name","Phone","Email","Document Type","Document Number"])
+            w.writerow(["ID","Name","Phone","Email"])
             for r in rows:
-                w.writerow([r["id"], r["name"], r["phone"] or "", r["email"] or "", r["document_type"] or "", r["document_number"] or ""])
+                w.writerow([r["id"], r["name"], r["phone"] or "", r["email"] or ""])
         MessageBox.info(self, "Export Complete", f"Exported {len(rows)} customers to customers_export.csv")
 
     def customer_check_in(self):
@@ -551,70 +404,30 @@ class GuestView(QWidget):
             return
         cust_id = int(self.customers.item(row,0).text())
         dlg = CustomerCheckinDialog(self, self.controller.db)
-        from PySide6.QtCore import QDate
-        dlg.check_in.setDate(QDate.currentDate())
-        
-        # Check if all rooms are occupied
-        if dlg.all_rooms_occupied:
-            MessageBox.warning(self, "No Room Available", 
-                              "All rooms are currently occupied.\nNo rooms available for check-in.\n\n" +
-                              "Please try again later or contact management.")
-            return
-        
+        dlg.check_in.setText(datetime.date.today().isoformat())
+        dlg.check_out.setText((datetime.date.today() + datetime.timedelta(days=1)).isoformat())
         if dlg.exec():
-            room_id = dlg.room.currentData()
-            # Allow check-in without assigning a room (waitlist) when room_id is None
+            room_number = dlg.room.currentData()
+            if not room_number:
+                QMessageBox.warning(self, "Validation", "Please select a room.")
+                return
             conn = self.controller.db.connect()
             cur = conn.cursor()
-            try:
-                if room_id is None:
-                    reply = MessageBox.question(self, "No Room Selected", "No rooms are available. Add customer to waitlist without a room?")
-                    if reply != QMessageBox.Yes:
-                        return
-
-                # If a real room was selected, validate it
-                if room_id is not None:
-                    cur.execute("SELECT id, status FROM Rooms WHERE id=?", (room_id,))
-                    room_row = cur.fetchone()
-                    if not room_row:
-                        QMessageBox.warning(self, "Error", "Room not found.")
-                        return
-                    if room_row["status"] != "Available":
-                        MessageBox.warning(self, "Room Unavailable", "Selected room is not available.")
-                        from PySide6.QtCore import QDate
-                        dlg.check_in.setDate(QDate.currentDate())
-
-                # If there is an existing Reserved reservation for this customer+room, update it to CheckedIn
-                if room_id is not None:
-                    cur.execute("SELECT id FROM Reservations WHERE customer_id=? AND room_id=? AND status='Reserved' ORDER BY id DESC LIMIT 1", (cust_id, room_id))
-                    existing = cur.fetchone()
-                else:
-                    existing = None
-
-                # Normalize check_out: store NULL when empty so walk-ins are distinguishable
-                check_out_val = dlg.check_out.text().strip() or None
-
-                if existing:
-                    logging.info(f"Updating existing reservation {existing['id']} to CheckedIn for customer {cust_id}")
-                    cur.execute("UPDATE Reservations SET status='CheckedIn', check_in=?, check_out=? WHERE id=?",
-                                (dlg.check_in.text().strip(), check_out_val, existing['id']))
-                else:
-                    logging.info(f"Creating new reservation as CheckedIn for customer {cust_id} in room {room_id}")
-                    cur.execute("INSERT INTO Reservations(customer_id,room_id,check_in,check_out,status) VALUES(?,?,?,?,?)",
-                                (cust_id, room_id, dlg.check_in.text().strip(), check_out_val, "CheckedIn"))
-
-                # Update room status only if a room was assigned
-                if room_id is not None:
-                    cur.execute("UPDATE Rooms SET status='Occupied' WHERE id=?", (room_id,))
-
-                conn.commit()
-                self.refresh_customers() # Refresh customer list after check-in
-                MessageBox.success(self, "Check-in Successful", "Customer checked in successfully!")
-                self.refresh_customer_orders(cust_id) # Also refresh orders for the checked-in customer
-            except Exception as e:
-                conn.rollback()
-                logging.error(f"Failed during check-in for customer {cust_id}: {e}", exc_info=True)
-                MessageBox.error(self, "Check-in Failed", f"Failed to check in customer: {e}")
+            cur.execute("SELECT id, status FROM Rooms WHERE number=?", (str(room_number),))
+            room_row = cur.fetchone()
+            if not room_row:
+                QMessageBox.warning(self, "Error", "Room not found.")
+                return
+            if room_row["status"] != "Available":
+                MessageBox.warning(self, "Room Unavailable", "Selected room is not available.")
+                return
+            room_id = room_row["id"]
+            cur.execute("INSERT INTO Reservations(customer_id,room_id,check_in,check_out,status) VALUES(?,?,?,?,?)",
+                        (cust_id, room_id, dlg.check_in.text(), dlg.check_out.text(), "CheckedIn"))
+            cur.execute("UPDATE Rooms SET status='Occupied' WHERE id=?", (room_id,))
+            conn.commit()
+            self.refresh_customers() # Refresh customer list after check-in
+            MessageBox.success(self, "Check-in Successful", "Customer checked in successfully!")
 
     def customer_check_out(self):
         row = self.customers.currentRow()
@@ -624,16 +437,16 @@ class GuestView(QWidget):
         cust_id = int(self.customers.item(row,0).text())
         conn = self.controller.db.connect()
         cur = conn.cursor()
-        cur.execute("SELECT id FROM Reservations WHERE customer_id=? AND status='CheckedIn' ORDER BY id DESC LIMIT 1", (cust_id,))
+        cur.execute("SELECT id, room_id FROM Reservations WHERE customer_id=? AND status='CheckedIn' ORDER BY id DESC LIMIT 1", (cust_id,))
         res = cur.fetchone()
         if not res:
             MessageBox.warning(self, "No Active Stay", "No active stay found for this customer.")
             return
-        # Open checkout dialog which will calculate bill and finalize
-        dlg = CheckoutDialog(self, self.controller.db, reservation_id=res['id'])
-        if dlg.exec():
-            self.refresh_customers()
-            self.refresh_customer_orders(cust_id)
+        cur.execute("UPDATE Reservations SET status='CheckedOut', check_out=? WHERE id=?", (datetime.date.today().isoformat(), res["id"]))
+        cur.execute("UPDATE Rooms SET status='Cleaning' WHERE id=?", (res["room_id"],))
+        conn.commit()
+        self.refresh_customers()
+        # self.refresh_rooms() # This would be handled by a RoomView if it existed
 
     def add_customer_order(self):
         row = self.customers.currentRow()
@@ -653,19 +466,15 @@ class GuestView(QWidget):
             conn = self.controller.db.connect()
             cur = conn.cursor()
             try:
-                # Create a new order record (use `created_at` column)
-                import datetime as _dt
-                cur.execute("INSERT INTO Orders (customer_id, status, created_at) VALUES (?, ?, ?)",
-                            (cust_id, "Open", _dt.datetime.now().isoformat()))
+                # Create a new order record
+                cur.execute("INSERT INTO Orders (customer_id, order_date, status) VALUES (?, ?, ?)",
+                            (cust_id, datetime.date.today().isoformat(), "Pending"))
                 order_id = cur.lastrowid
 
                 # Insert order items
                 for item_id, quantity in order_details.items():
-                    # Get the price of the menu item
-                    cur.execute("SELECT price FROM MenuItems WHERE id = ?", (item_id,))
-                    item_price = cur.fetchone()["price"]
-                    cur.execute("INSERT INTO OrderDetails (order_id, item_id, qty, price, kitchen_status) VALUES (?, ?, ?, ?, ?)",
-                                (order_id, item_id, quantity, item_price, "Pending"))
+                    cur.execute("INSERT INTO OrderItems (order_id, menu_item_id, quantity) VALUES (?, ?, ?)",
+                                (order_id, item_id, quantity))
                 conn.commit()
                 MessageBox.success(self, "Order Placed", f"Order for {cust_name} placed successfully!")
                 self.refresh_customer_orders(cust_id) # Refresh orders after placing a new one

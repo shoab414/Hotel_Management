@@ -14,6 +14,7 @@ from .menu_management_view import MenuManagementView
 
 class MainWindow(QMainWindow):
     def __init__(self, controller):
+        logging.info("MainWindow __init__ started.")
         super().__init__()
         self.controller = controller
         self.setWindowTitle("Hotel & Restaurant Management")
@@ -37,11 +38,6 @@ class MainWindow(QMainWindow):
         self.setCentralWidget(wrap)
         self._build_sidebar()
         self._build_pages()
-        # Expose tables view on the controller for dialogs/windows that expect a `refresh_tables()` method
-        try:
-            self.controller.hotel_view = self.page_tables
-        except Exception:
-            logging.exception("Failed to attach hotel_view (tables) to controller")
 
     def _build_sidebar(self):
         v = QVBoxLayout(self.sidebar)

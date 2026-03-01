@@ -1,4 +1,4 @@
-from PySide6.QtWidgets import QWidget, QVBoxLayout, QHBoxLayout, QTableWidget, QTableWidgetItem, QPushButton, QLineEdit, QSpinBox, QDialog, QFormLayout, QLabel, QMessageBox, QDoubleSpinBox, QHeaderView, QCheckBox, QComboBox
+from PySide6.QtWidgets import QWidget, QVBoxLayout, QHBoxLayout, QTableWidget, QTableWidgetItem, QPushButton, QLineEdit, QSpinBox, QDialog, QFormLayout, QLabel, QMessageBox, QDoubleSpinBox, QHeaderView, QCheckBox
 from PySide6.QtCore import Qt
 from PySide6.QtGui import QShowEvent
 import logging
@@ -23,7 +23,7 @@ class MenuManagementView(QWidget):
         filter_layout = QHBoxLayout()
         self.category_filter = QComboBox()
         self.category_filter.addItem("All Categories")
-        self.category_filter.addItems(["Starter", "Main Course", "Dessert", "Drinks", "Chinese", "Italian", "Non-Veg", "Veg"])
+        # Categories will be loaded dynamically
         filter_layout.addWidget(QLabel("Category:"))
         filter_layout.addWidget(self.category_filter)
 
@@ -46,9 +46,7 @@ class MenuManagementView(QWidget):
         self.item_id_label = QLabel("ID: (New)")
         self.item_name_input = QLineEdit()
         self.item_category_combo = QComboBox()
-        # Fixed categories for menu items
-        self.MENU_CATEGORIES = ["Starter", "Main Course", "Dessert", "Drinks", "Chinese", "Italian", "Non-Veg", "Veg"]
-        self.item_category_combo.addItems(self.MENU_CATEGORIES)
+        # Categories will be loaded dynamically
         self.item_price_input = QDoubleSpinBox()
         self.item_price_input.setMinimum(0.0)
         self.item_price_input.setMaximum(9999.99)
@@ -94,20 +92,13 @@ class MenuManagementView(QWidget):
         price = self.item_price_input.value()
         active = self.item_active_checkbox.isChecked()
 
-        if not name:
-            MessageBox.warning(self, "Input Error", "Please provide a name for the dish.")
-            return
-        if category not in self.MENU_CATEGORIES:
-            MessageBox.warning(self, "Input Error", "Please select a valid category (Starter, Lunch, Breakfast, Dinner, Sweets).")
+        if not name or category == "All Categories":
+            MessageBox.warning(self, "Input Error", "Please provide a name and select a valid category for the dish.")
             return
 
         try:
-            # Check duplicate name before adding
-            if self.controller.menu_item_name_exists(name, exclude_id=None):
-                MessageBox.warning(self, "Duplicate Dish", f"A dish with the name '{name}' already exists in the menu. Please use a different name.")
-                return
             self.controller.add_menu_item(name, category, price, active)
-            MessageBox.info(self, "Success", f"Dish '{name}' added successfully.")
+            MessageBox.information(self, "Success", f"Dish '{name}' added successfully.")
             self.refresh()
             self._clear_form()
         except Exception as e:
@@ -131,20 +122,13 @@ class MenuManagementView(QWidget):
         price = self.item_price_input.value()
         active = self.item_active_checkbox.isChecked()
 
-        if not name:
-            MessageBox.warning(self, "Input Error", "Please provide a name for the dish.")
-            return
-        if category not in self.MENU_CATEGORIES:
-            MessageBox.warning(self, "Input Error", "Please select a valid category (Starter, Lunch, Breakfast, Dinner, Sweets).")
+        if not name or category == "All Categories":
+            MessageBox.warning(self, "Input Error", "Please provide a name and select a valid category for the dish.")
             return
 
         try:
-            # Check duplicate name when updating (exclude current item)
-            if self.controller.menu_item_name_exists(name, exclude_id=item_id):
-                MessageBox.warning(self, "Duplicate Dish", f"A dish with the name '{name}' already exists in the menu. Please use a different name.")
-                return
             self.controller.update_menu_item(item_id, name, category, price, active)
-            MessageBox.info(self, "Success", f"Dish '{name}' (ID: {item_id}) updated successfully.")
+            MessageBox.information(self, "Success", f"Dish '{name}' (ID: {item_id}) updated successfully.")
             self.refresh()
             self._clear_form()
         except Exception as e:
@@ -152,39 +136,26 @@ class MenuManagementView(QWidget):
 
     def _delete_dish(self):
         logging.info("Delete Dish button clicked.")
-        # Prefer getting item_id from selected row so delete always works when a row is selected
-        selected = self.menu_table.selectedItems()
-        if selected:
-            row = selected[0].row()
-            item_id_text = self.menu_table.item(row, 0).text()
-            dish_name = self.menu_table.item(row, 1).text()
-        else:
-            item_id_text = self.item_id_label.text().replace("ID: ", "").strip()
-            dish_name = self.item_name_input.text().strip() or f"ID: {item_id_text}"
-            if item_id_text == "(New)" or not item_id_text:
-                MessageBox.warning(self, "Selection Error", "Please select a dish from the table to delete.")
-                return
+        item_id_text = self.item_id_label.text().replace("ID: ", "")
+        if item_id_text == "(New)":
+            MessageBox.warning(self, "Selection Error", "Please select an existing dish to delete.")
+            return
 
         try:
             item_id = int(item_id_text)
         except ValueError:
-            MessageBox.critical(self, "Error", "Invalid item ID. Please select a dish from the table.")
+            MessageBox.critical(self, "Error", "Invalid item ID.")
             return
 
-        confirmed = MessageBox.confirm(
-            self, "Confirm Delete",
-            f"Are you sure you want to delete '{dish_name}' (ID: {item_id})?",
-            confirm_text="Yes", cancel_text="No"
-        )
-        if not confirmed:
-            return
-        try:
-            self.controller.delete_menu_item(item_id)
-            MessageBox.info(self, "Success", f"Dish '{dish_name}' deleted successfully.")
-            self.refresh()
-            self._clear_form()
-        except Exception as e:
-            MessageBox.critical(self, "Error", f"Failed to delete dish: {e}")
+        reply = MessageBox.question(self, "Confirm Delete", f"Are you sure you want to delete dish ID: {item_id}?")
+        if reply == QMessageBox.Yes:
+            try:
+                self.controller.delete_menu_item(item_id)
+                MessageBox.information(self, "Success", f"Dish ID: {item_id} deleted successfully.")
+                self.refresh()
+                self._clear_form()
+            except Exception as e:
+                MessageBox.critical(self, "Error", f"Failed to delete dish: {e}")
 
     def _item_selected(self):
         selected_items = self.menu_table.selectedItems()
@@ -201,17 +172,7 @@ class MenuManagementView(QWidget):
 
         self.item_id_label.setText(f"ID: {item_id}")
         self.item_name_input.setText(name)
-        # Match category (case-insensitive for existing DB data)
-        idx = self.item_category_combo.findText(category, Qt.MatchFixedString)
-        if idx < 0:
-            for i in range(self.item_category_combo.count()):
-                if self.item_category_combo.itemText(i).lower() == category.lower():
-                    idx = i
-                    break
-        if idx >= 0:
-            self.item_category_combo.setCurrentIndex(idx)
-        else:
-            self.item_category_combo.setCurrentIndex(0)
+        self.item_category_combo.setCurrentText(category)
         self.item_price_input.setValue(float(price_text))
         self.item_active_checkbox.setChecked(active_text == "Yes")
 
@@ -220,15 +181,18 @@ class MenuManagementView(QWidget):
 
 
     def _load_categories(self):
-        # Filter: All Categories + fixed list (keep selection if possible)
-        current_filter = self.category_filter.currentText()
         self.category_filter.clear()
+        self.item_category_combo.clear()
         self.category_filter.addItem("All Categories")
-        self.category_filter.addItems(self.MENU_CATEGORIES)
-        idx = self.category_filter.findText(current_filter)
-        if idx >= 0:
-            self.category_filter.setCurrentIndex(idx)
-        # item_category_combo is already set in __init__ with MENU_CATEGORIES; do not clear it on refresh
+        
+        conn = self.controller.db.connect()
+        cur = conn.cursor()
+        cur.execute("SELECT DISTINCT category FROM MenuItems ORDER BY category")
+        categories = [row['category'] for row in cur.fetchall()]
+        
+        for cat in categories:
+            self.category_filter.addItem(cat)
+            self.item_category_combo.addItem(cat)
 
     def refresh(self):
         logging.info("MenuManagementView refresh called.")
@@ -280,7 +244,7 @@ class MenuManagementView(QWidget):
     def _clear_form(self):
         self.item_id_label.setText("ID: (New)")
         self.item_name_input.clear()
-        self.item_category_combo.setCurrentIndex(0)  # First fixed category (Starter)
+        self.item_category_combo.setCurrentIndex(0) # Select first category or "All"
         self.item_price_input.setValue(0.0)
         self.item_active_checkbox.setChecked(True)
         self.menu_table.clearSelection()
